@@ -60,20 +60,20 @@ void SetReducedParameters(int argc, char *argv[]) {
 
 	using namespace Parameters;
 
-	Number = atoi(argv[1]); std::cout << "Number: " << Number;
-	N = atoi(argv[2]); std::cout << ", N: " << N;
-	numChanges = atoi(argv[3]); std::cout << ", numChanges: " << numChanges;
-	avgdeg = atoi(argv[4]); std::cout << ", avgdeg: " << avgdeg;
+	Number = atoi(argv[1]);// std::cout << "Number: " << Number;
+	N = atoi(argv[2]);// std::cout << ", N: " << N;
+	numChanges = atoi(argv[3]);// std::cout << ", numChanges: " << numChanges;
+	avgdeg = atoi(argv[4]);// std::cout << ", avgdeg: " << avgdeg;
 	Folder = argv[5]; 
-	SingleSeed = atoi(argv[6]);  std::cout << ", SingleSeed: " << SingleSeed;
-        runHours = atof(argv[7]); std::cout << ", runHours: " << runHours;
-        evoCondition = argv[8]; std::cout << ", EvoCondition: " <<
-            evoCondition;
-        initialDistribution = argv[9]; std::cout << ", InitialDistribution: "
-            << initialDistribution;
-        lambda = atof(argv[10]); std::cout << ", lambda: " << lambda;
-        beta = atof(argv[11]); std::cout << ", beta: " << beta;
-        power = atof(argv[12]); std::cout << ", power: " << power;
+	SingleSeed = atoi(argv[6]);//  std::cout << ", SingleSeed: " << SingleSeed;
+        runHours = atof(argv[7]);// std::cout << ", runHours: " << runHours;
+        evoCondition = argv[8];// std::cout << ", EvoCondition: " <<
+            //evoCondition;
+        initialDistribution = argv[9];// std::cout << ", InitialDistribution: "
+            //<< initialDistribution;
+        lambda = atof(argv[10]);// std::cout << ", lambda: " << lambda;
+        beta = atof(argv[11]);// std::cout << ", beta: " << beta;
+        power = atof(argv[12]);// std::cout << ", power: " << power;
 
 	std::ifstream SeedFile;
 	SeedFile.open("SeedFile");
@@ -87,7 +87,7 @@ void SetReducedParameters(int argc, char *argv[]) {
 	    
 	}
 	
-	std::cout << "Seed: " << Seed << std::endl;
+	//std::cout << "Seed: " << Seed << std::endl;
 	RealSeed = Seed;
 
 	SeedFile.close();
@@ -118,32 +118,31 @@ void SetDefaultParameters() {
 
 
 //get parameters from cmd line and set them
-/*
 void SetParameters(int argc, char *argv[]) {
 
 	using namespace Parameters;
 
-	Number = atoi(argv[1]); std::cout << "Number: " << Number;
-	R = atof(argv[2]); std::cout << ", R: " << R;
-	gammap = atof(argv[3]); std::cout << ", gammap: " << gammap;
-	gamman = atof(argv[4]); std::cout << ", gamman: " << gamman;
-	N = atoi(argv[5]); std::cout << ", N: " << N;
-	nd = atoi(argv[6]); std::cout << ", nd: " << nd;
-	alpha = std::stod(argv[7]); std::cout << ", alpha: " << alpha;
-	avgdeg = atoi(argv[8]); std::cout << ", avgdeg: " << avgdeg;
-	MortalityCondition = argv[9]; std::cout << ", MortalityCondition: " << MortalityCondition;
-	Topology = argv[10]; std::cout << ", Topology: " << Topology;
+	Number = atoi(argv[1]);// std::cout << "Number: " << Number;
+	R = atof(argv[2]);// std::cout << ", R: " << R;
+	gammap = atof(argv[3]);// std::cout << ", gammap: " << gammap;
+	gamman = atof(argv[4]);// std::cout << ", gamman: " << gamman;
+	N = atoi(argv[5]);// std::cout << ", N: " << N;
+	nd = atoi(argv[6]);// std::cout << ", nd: " << nd;
+	alpha = std::stod(argv[7]);// std::cout << ", alpha: " << alpha;
+	avgdeg = atoi(argv[8]);// std::cout << ", avgdeg: " << avgdeg;
+	MortalityCondition =// argv[9]; std::cout << ", MortalityCondition: " << MortalityCondition;
+	Topology = argv[10];// std::cout << ", Topology: " << Topology;
 	Folder = argv[11]; 
-	NetworkType = argv[12]; std::cout << ", NetworkType: " << NetworkType;
-	TaskID = atoi(argv[13]); std::cout << ", TaskID: " << TaskID;
-	SingleSeed = atoi(argv[14]);  std::cout << ", SingleSeed: " << SingleSeed;
-        p_assortativity = atof(argv[15]);  std::cout << ", p_assortativity: " << p_assortativity;
+	NetworkType = argv[12];// std::cout << ", NetworkType: " << NetworkType;
+	TaskID = atoi(argv[13]);// std::cout << ", TaskID: " << TaskID;
+	SingleSeed = atoi(argv[14]);//  std::cout << ", SingleSeed: " << SingleSeed;
+        p_assortativity = atof(argv[15]);//  std::cout << ", p_assortativity: " << p_assortativity;
 
 
 	FrailtyIncrement = 1.0/FIn;
    
-	std::cout << std::endl;
-	std::cout << std::endl;
+	//std::cout << std::endl;
+	//std::cout << std::endl;
 	
 
 	std::ifstream SeedFile;
@@ -158,7 +157,7 @@ void SetParameters(int argc, char *argv[]) {
 	    
 	}
 	
-	std::cout << "Seed: " << Seed << std::endl;
+	//std::cout << "Seed: " << Seed << std::endl;
 	RealSeed = Seed;
 
 	SeedFile.close();
@@ -167,6 +166,7 @@ void SetParameters(int argc, char *argv[]) {
 }
 
 
+/*
 //get parameters from cmd line and set them
 void SetEvolutionParameters(int argc, char *argv[]) {
 

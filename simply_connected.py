@@ -16,10 +16,10 @@ import string
 """
 from general_functions import *
 from network_from_mean_field import *
-from visualization import *
 from default_params import *
 from evolution_performance import *
 from evo_plotting import *
+from visualization import *
 """
 import networkx as nx
 import datetime
@@ -33,8 +33,131 @@ import numpy as np
 
 mpl.rcParams['lines.markersize'] = 8
 mpl.rcParams['lines.linewidth'] = 1.5
-mpl.rcParams['lines.markeredgecolor'] = 'k'
+#mpl.rcParams['lines.markeredgecolor'] = 'k'
 mpl.rcParams['lines.markeredgewidth'] = 0.5
+
+def gaussian_parameter_change(param, width, limits):
+    """
+    Change the parameter proportionally using a fraction generated from a 
+    gaussian. Disallow values outside of the limits.
+    """
+    change = 1 - width*pl.normal()
+
+    while change * param < limits[0] or change * param > limits[1]:
+        change = 1 - width*pl.normal()
+    
+    return param * change
+
+def optimal_node_partition(N, Nc, avg_k):
+    """ Calculates how many of each node you need for 'optimal' network of size
+    N when trying to protect Nc nodes"""
+
+    det = pl.sqrt(9 - 4 * (2*N + 1 - Nc - N*avg_k))
+
+    sign = 1
+
+    if det <= 3:
+        sign = -1
+    
+    Ns = 0.5 * (3 + sign * det)
+    Ns = int(Ns)
+
+    N1 = N - Nc - Ns
+    
+    #N += Nc - (N1 - 1)%Nc
+
+    return N, Nc, N1, Ns
+
+def optimal_network(N, Nc, avg_k, n_fi_nodes):
+    """Hypothetical optimal network of size N for protecting the Nc critical
+    function nodes."""
+    
+    N, Nc, N1, Ns = optimal_node_partition(N, Nc, avg_k)
+
+    # initialize Graph
+    G = nx.Graph()
+    for i in range(N):
+        G.add_node(i)
+    
+    # Critical Node Ids
+    critical = pl.arange(Nc) * (N1 + Nc - 1)/Nc + 1
+    critical = pl.round_(critical).astype(int)
+    critical[0] = 0
+    
+    # Peripheral node IDs
+    peripheral = pl.asarray([i for i in range(N - Ns) if i not in critical])
+    
+    # Sink Node IDs
+    sink = pl.arange(N - Ns, N)
+
+    # Connect Critical Nodes to Peripheral Nodes
+    for i, crit in enumerate(critical):
+        if i < Nc - 1:
+            G.add_edge(crit, critical[i+1])
+            connectees = peripheral[(peripheral > crit) & (
+                peripheral < critical[i + 1])]
+        else:
+            connectees = peripheral[(peripheral > crit) & (
+                peripheral < pl.inf)]
+ 
+        for connect_id in connectees:
+            G.add_edge(crit, connect_id)
+
+    # connect Sink Nodes to Critical Nodes
+    if len(sink) > 0:
+        G.add_edge(critical[-1], sink[0])
+
+    # Connect sink Nodes together
+    for i, ID in enumerate(sink):
+        for j, connect_ID in enumerate(sink[sink != ID]):
+            G.add_edge(ID, connect_ID)
+    
+    mort_nodes = []
+    # Make up some Mortality Node and FI Node stuff
+    if Nc > 1:
+        mort_nodes = [critical[0], critical[int(len(critical)/2)]]
+    else:
+        if len(sink) > 0:
+            mort_nodes = [critical[0], sink[0]]
+        
+    important_nodes = [i for i in list(critical) + list(sink) +
+        list(peripheral) if i not in mort_nodes]
+    fi_nodes = []
+    fi_nodes = important_nodes[:n_fi_nodes]
+           
+    return G, mort_nodes, fi_nodes
+
+
+def get_scale_free_degrees(N, alpha, avg_deg, seed):
+    """
+    Use Spencer's code to get the degree sequence for scale free network of
+    given parameters
+    """
+    # params for generating network
+    params = ["0", "0.0", "0.0", "0.0", str(N), "2", str(alpha), str(avg_deg),
+                "AND", "Single", "GeneratedNetworks", "ScaleFree", "0",
+                str(seed), "0.0"]
+    #sub.call(["make", "backup"])
+    command = ['./main'] + params 
+    sub.call(command)
+
+    output_files = os.listdir("GeneratedNetworks/")
+    degree_file = output_files[0]
+    degree_sequence = pl.loadtxt("GeneratedNetworks/" + degree_file)[:,1]
+
+    for f in output_files:
+        os.remove("GeneratedNetworks/" + f)
+
+    k_min = pl.amin(degree_sequence)
+    k_max = pl.amax(degree_sequence)
+
+    degree_bins = pl.arange(k_min, k_max + 2)
+    degrees = degree_bins[:-1]
+    dk = pl.histogram(degree_sequence, degree_bins)[0]
+    degrees = degrees[dk != 0]
+    dk = dk[dk != 0]
+
+    return degrees, dk, degree_sequence
 
 
 def power_law_distribution(alpha, k_min, k_max, target_avg_k):
@@ -45,7 +168,6 @@ def power_law_distribution(alpha, k_min, k_max, target_avg_k):
     avg_k = pl.dot(degrees, pk)
     cost = pl.absolute(target_avg_k - avg_k)
     return pk, avg_k, cost
-
 
 def get_scale_free(alpha, k_min, N, target_avg_deg, tolerance = 0.01,
         output_progress = False):
@@ -101,7 +223,7 @@ def get_scale_free(alpha, k_min, N, target_avg_deg, tolerance = 0.01,
                 pks += [pk]
                 measure_points += [i]
                 k_maxes += [k_max]
-            if i == 2**12:
+            if i == 2**15:
                 print("Timed Out")
                 return "failure"
 
@@ -550,10 +672,11 @@ def sampled_edge_assignment(k_index, degrees, degree_counts, stubs,
             edge_weights[k_index] /= 2.0
             probabilities = edge_weights/pl.sum(edge_weights)
 
-            if pl.nan in probabilities or pl.sum(available_stubs) == 0:
-                print("\n\n\n", probabilities, "\n\n\n")
+            try:
+                k_prime_index = pl.choice(size, p = probabilities)
+            except ValueError:
+                print("\n Probabilities Contain NaN\n")
                 break
-            k_prime_index = pl.choice(size, p = probabilities)
 
         # picking up assortative problems
         if k_prime_index == size:
@@ -745,7 +868,7 @@ def weighted_connection_matrix(degrees, degree_counts,
     jkk += jkk.T
     if degrees[0] == 1:
         print("Sum of Jkk:", pl.sum(jkk), "J(1, 1)=", jkk[0,0])
-        #jkk[0,0] = 0.0
+        jkk[0,0] = 0.0
     return jkk
 
 def build_weighted_graph(degrees, degree_counts,
@@ -767,9 +890,9 @@ def build_weighted_graph(degrees, degree_counts,
                     return G
 
     print("Couldn't Build the Graph (Valid Jkk)")
-    pl.figure(figsize = (8,6))
-    pl.imshow(jkk, origin = 'lower')
-    pl.colorbar()
+    #pl.figure(figsize = (8,6))
+    #pl.imshow(jkk, origin = 'lower')
+    #pl.colorbar()
     #print(jkk)
     non_1_edges = pl.sum(jkk[:,1:] > 0, axis = 1)
     print(len(non_1_edges), pl.shape(jkk))
@@ -1094,11 +1217,12 @@ def run_network(G, input_dir, data_dir, params, param_names,
     #print(params)
     network_travel_start = time.time()
     output_network(G, input_dir + "SimplyConnected.csv")
+    print("Outputting to " + input_dir + "SimplyConnected.csv")
+
     network_travel_time = time.time() - network_travel_start
     ### running stuff
     # compile if needed
     sub.call(["make", "testNetwork"])
-
     command = ['./testNetwork'] + params 
     raw_start_time = time.time()
     sub.call(command)
@@ -1106,7 +1230,10 @@ def run_network(G, input_dir, data_dir, params, param_names,
     print("Real Simulation Time: {0:.3f}, Network Travel() time: {1:.3f}".format(
         raw_simulation_time, network_travel_time))
 
+    print("Reading data from " + data_dir)
+
     output_files = os.listdir(data_dir)
+    print(output_files)
 
     performances = []
     for m in measures:
@@ -1216,7 +1343,7 @@ def network_from_jkk(jkk, degrees, N, return_pkk = False):
     #print(jkk_dict)
     # check that it works
     #print("Checking Validity")
-    tries = 2
+    tries = 10
     if nx.is_valid_joint_degree(jkk_dict):
         for t in range(tries):
             # build the graph
@@ -1239,6 +1366,7 @@ def network_from_jkk(jkk, degrees, N, return_pkk = False):
             # ensure it's fully connected
             connected_components = list(nx.connected_components(G))
             connected_components.sort(key=len, reverse=True)
+            biggest_component = connected_components[0]
  
             num_components = len(connected_components)
             if num_components == 1:
@@ -1246,6 +1374,16 @@ def network_from_jkk(jkk, degrees, N, return_pkk = False):
                     return G, jkk/pl.sum(jkk)
                 else:
                     return G
+            elif len(biggest_component) >= 0.99 * N:
+                G = G.subgraph(biggest_component)
+                print("Using the Giant Component")
+                G = nx.relabel.convert_node_labels_to_integers(G,
+                                    first_label=0, ordering='default')
+                if return_pkk:
+                    return G, jkk/pl.sum(jkk)
+                else:
+                    return G 
+
             else:
                 degree_sequence = [k for node_id, k in G.degree()]
                 G = consolidate_components(connected_components,
@@ -1273,7 +1411,36 @@ def network_from_jkk(jkk, degrees, N, return_pkk = False):
             return "Invalid G", "Invalid Pkk"
         else:
             return "Invalid G"
-            
+
+def build_motif_graph(motif, N):
+    """
+    function for building some motif graphs
+    """
+    G = nx.empty_graph(N)
+    if motif == "star":
+        for i in range(1, N):
+            G.add_edge(0, i)
+    
+    elif motif == "ball":
+        for i in range(N):
+            for j in range(i + 1, N):
+                G.add_edge(i, j)
+    elif motif == "chain":
+        for i in range(N):
+            G.add_edge(i, (i+1)%N)
+
+    elif motif == "parents":
+        if N == 2:
+            G.add_edge(0,1)
+        for i in range(2, N):
+            G.add_edge(i, 0)
+            G.add_edge(i, 1)
+    else:
+        print("Pick from: star, ball, chain.")
+        return "Invalid Motif"
+
+    return G
+
 
 
 if __name__ == '__main__':
@@ -1290,7 +1457,7 @@ if __name__ == '__main__':
     avg_k = 4
     scale = 0.00183
     ## parameters of running the simulaton
-    number = "10000"
+    number = "1000"
     output_folder = 'SimplyConnectedData/'
 
     seed  = '1'
@@ -1309,88 +1476,105 @@ if __name__ == '__main__':
         run_hours, evo_condition, initial_distribution, Lambda,
         beta, power]
 
-    test_sanity = 0
-    if test_sanity:
-        k_min = 1
-        k_max = 2000
-        degrees = pl.arange(k_min, k_max + 1)
-        avg_k = 4
-        alpha = -2.27
-        prefactors = pl.linspace(1, 10, 2)
-        offsets = [0.1, 1] #pl.linspace(-10, 1, 13)
-        pl.figure(figsize = (8,6))
-        for i, p in enumerate(prefactors):
-            colour = 'C' + str(i)
-            colour2 = 'C' + str((i+5) % 10)
-            for o in offsets:
-                pk = power_law_distribution(alpha, p, o, degrees, avg_k)[0]
-                pl.plot(degrees - o, pk, colour)
-                pl.plot(degrees, p*(degrees * o)**alpha, colour2, ls = '--')
-                #pl.plot(degrees, p*(degrees)**alpha, colour2, ls = '--')
-
-                
-        pl.xscale('log')
-        pl.yscale('log')
-
     test_power_law = 0
     if test_power_law:
-        k_min = 2
-        k_max = 1000
-        degrees = pl.arange(k_min, k_max + 1)
+        plots_dir = "Plots/ScaleFreeChecks/"
         avg_k = 4
-        alpha = -2.3
-        tolerance = 0.001 * avg_k
+        alpha = 2.27
+        alphas = [2.001, 2.1, 2.3, 3.0, 5.0]
         N = 10000
-
-        results = get_scale_free(alpha, k_min, N, avg_k, tolerance,
-                    output_progress = True)
-        labels = ['iterations', 'P(k)', 'Degrees', 'Costs', 'Average Degrees',
-                'k_maxes']
-        expected_values = [0, 0, 0, 0, avg_k, 0]
-        x = results[0]
-        for i, result in enumerate(results):
-            if i < 3:
-                continue
+        n_samp = 1000
+        for alpha in alphas:
+            k = pl.arange(0, N)
+            reference = k**(-alpha)
             pl.figure(figsize = (8,6))
-            ev = expected_values[i]
-            pl.plot(x,result)
-            
+            pl.plot(k, reference, label = r'Power Law $\alpha = {0}$'.format(alpha))
             pl.xscale('log')
-            pl.title(labels[i])
-            pl.axhline(expected_values[i], color = 'C1', ls = ':')
-        pl.figure(figsize = (8,6))
-        pl.plot(results[2], results[1][-1], 'ko')
-        pl.plot(degrees, degrees**alpha)
-        pl.xscale('log')
-        pl.yscale('log')
+            pl.yscale('log')
+
+            bins = pl.arange(N+1)
+            n_max = pl.log2(N).astype(int) + 1
+
+            log_bins = pl.logspace(0, n_max - 1, n_max, base=2)
+            log_combined = [] #pl.zeros(n_max-1)
+            combined = []#pl.zeros(N)
+            for i in range(n_samp):
+                degrees, dk, degree_sequence = get_scale_free_degrees(N, alpha,
+                                                                        avg_k, i)
+                #combined[pl.asarray(degrees).astype(int)] += pl.asarray(dk)
+                #log_combined += pl.histogram(degree_sequence, log_bins)[0]
+                combined += [pl.histogram(degree_sequence, bins, density=True)[0]]
+                log_combined += [pl.histogram(degree_sequence, log_bins)[0]]
+                pl.plot(degrees, dk/N, 'C0o', alpha = 0.3)
+                if i == 0:
+                    pl.plot(degrees, dk/N, 'C0o', alpha = 0.3,
+                        label = "Individual Networks")
+            means = pl.average(combined, axis = 0)
+            errors = pl.std(combined, axis = 0)/pl.sqrt(n_samp - 1)
+            pl.errorbar(k, means, fmt='ko', capsize = 3, label = 'Average')
+            pl.xlabel('k')
+            pl.ylabel('P(k)')
+            pl.legend()
+            pl.savefig(plots_dir + "CheckScaleFreeAlpha{}.pdf".format(alpha))
 
 
-    test_weighted_assignment_assortativity = 1
+            pl.figure(figsize=(8,6))
+            pl.xscale('log')
+            pl.yscale('log')
+            means = pl.average(log_combined, axis = 0)
+            errors = pl.std(log_combined, axis = 0)/pl.sqrt(n_samp - 1)
+            pl.errorbar(log_bins[:-1], means, yerr = errors, fmt='ko', capsize = 3,
+                            label = 'Binned Average')
+            ev = []
+            for i in range(1, n_max):
+                j = int(2**i)
+                k = int(2**(i+1))
+                print(j, k)
+                ev.append(pl.sum(N*reference[j:k]))
+            pl.plot(log_bins[1:-2], ev[:-2], 
+                        label = r'Power Law $\alpha = {0}$'.format(alpha))
+            pl.legend()
+            pl.ylabel('Average Number of Sampled Nodes')
+            pl.xlabel('k')
+            pl.savefig(plots_dir + "BinnedCheckScaleFreeAlpha{}.pdf".format(alpha))
+
+
+
+    test_weighted_assignment_assortativity = 0
     if test_weighted_assignment_assortativity:
-        N = 10000
+        N = 500
         original_N = N
         graph_type = "ScaleFree"
-        alpha = -2.01
-        k_min = 2
+        alpha = -2.27
 
-        avg_deg = 4.0
+        avg_deg = 4
+        k_min = avg_deg//2
         x_scale = 'linear'
         y_scale = 'linear'
 
-        alphas = [-2.2, -2.27, -2.4, -2.7, -2.9, -3.1]
+        alphas = [2.27] #[2.01, 2.1, 2.5, 3.0, 5.0]
+        if graph_type == "Random":
+            alphas = ["Bubcus"]
         for alpha in alphas:
-            folder = plots_folder + graph_type + "N{0}".format(N)
+            print(alpha)
+            folder = plots_folder + graph_type + "N{0}AvgDeg{1}".format(N,
+                                                                    avg_deg)
             if "andom" in graph_type:
-                G = nx.fast_gnp_random_graph(N, p = 4/N)
+                G = nx.fast_gnp_random_graph(N, p = avg_deg/N)
+                G.remove_nodes_from(list(nx.isolates(G)))
                 degree_sequence = [k for node_id, k in G.degree()]
                 k_max = pl.amax(degree_sequence)
                 k_min = pl.amin(degree_sequence)
                 dummy_degrees = pl.arange(k_min, k_max + 2)
+                degrees = pl.copy(dummy_degrees)[:-1]
                 dk = pl.histogram(degree_sequence, bins = dummy_degrees)[0]
             else:
                 x_scale = 'log'
                 y_scale = 'log'
                 folder += "kMin{0}Alpha{1}".format(k_min, -alpha)
+                degrees, dk, degree_sequence = get_scale_free_degrees(
+                                            N, alpha, avg_deg)
+                """
                 details  = get_scale_free(alpha, k_min, N, avg_deg)
                 if type(details) == str:
                     continue
@@ -1403,6 +1587,7 @@ if __name__ == '__main__':
                         degree_sequence, dk = random_hub_node_degrees(pk, degrees, N)
                     if check_graphical(degree_sequence):
                         break
+                """
 
 
 
@@ -1411,8 +1596,7 @@ if __name__ == '__main__':
             print("Average Degree:", pl.dot(dk, degrees)/N)
 
             # set up the Big figure
-            fig, axes = pl.subplots(2,3, figsize = (12,8), constrained_layout=1)
-            #    gridspec_kw={'constrained_layout':True})
+            fig, axes = pl.subplots(2,3, figsize = (12,8))
             fig.subplots_adjust(wspace = 0.4)
             fraction = 0.046
             pad = 0.04
@@ -1528,7 +1712,8 @@ if __name__ == '__main__':
                             xycoords = 'axes fraction', fontsize = fs)
 
             asp = 1/2 #pl.diff(axes[0,0].get_xlim())[0] / pl.diff(axes[0,0].get_ylim())[0]
-            axes[0,0].set_aspect(asp)
+            axes[0,0].set_aspect('auto', 'box')
+
             fig.savefig(folder + "AssortativitySweep.pdf".format(
                                                 original_N, graph_type))
 
@@ -1555,17 +1740,23 @@ if __name__ == '__main__':
 
     show_weighted_pkk = 0
     if show_weighted_pkk:
-        N = 10000
+        N = 500
         graph_type = "ScaleFree"
+        pl.seed(1)
+        alpha = 2.27
+        avg_deg = 4.0
         if "andom" in graph_type:
             G = nx.fast_gnp_random_graph(N, p = 4/N)
         else:
             G = nx.barabasi_albert_graph(N, 2)
-        degree_sequence = [k for node_id, k in G.degree()]
+            degrees, dk, degree_sequence = get_scale_free_degrees(
+                                        N, alpha, avg_deg)
+
+        #degree_sequence = [k for node_id, k in G.degree()]
         k_max = pl.amax(degree_sequence)
-        degrees = pl.arange(1, k_max + 2)
-        dk = pl.histogram(degree_sequence, bins = degrees)[0]
-        degrees = degrees[:-1]
+        #degrees = pl.arange(1, k_max + 2)
+        #dk = pl.histogram(degree_sequence, bins = degrees)[0]
+        #degrees = degrees[:-1]
         degrees = degrees[dk != 0]
         dk = dk[dk!=0]
 
@@ -1604,7 +1795,8 @@ if __name__ == '__main__':
             p_d_limit = 1-p_a
             print("P Assortative =", p_a)
             for j, p_d in enumerate(p_values):#[p_values <= p_d_limit]):
-                
+                use_x_ticks = (n - i - 1) == 2
+                use_y_ticks = j == 0
                 axis = ax[n-i-1,j]
                 print("P Dissassortative =", p_d)
                 if p_d > p_d_limit:
@@ -1627,18 +1819,62 @@ if __name__ == '__main__':
                     'P-D:{1}'.format(p_a, p_d, p_random),
                         xy = (0.5, 0.98), xycoords = 'axes fraction',
                         ha='center', va='top',color = 'w')
-                axis.set_xticks(pl.arange(len(degrees))[::show_every])
-                axis.set_xticklabels(degrees[::show_every])
-                axis.set_yticks(pl.arange(len(degrees))[::show_every])
-                axis.set_yticklabels(degrees[::show_every])
+                if use_x_ticks:
+                    axis.set_xticks(pl.arange(len(degrees))[::show_every])
+                    axis.set_xticklabels(degrees[::show_every].astype(int))
+                else:
+                    axis.set_xticks([])
+                if use_y_ticks:
+                    axis.set_yticks(pl.arange(len(degrees))[::show_every])
+                    axis.set_yticklabels(degrees[::show_every].astype(int))
+                else:
+                    axis.set_yticks([])
 
 
         ax[0,2].set_aspect('auto', 'box')
 
         ax[0,1].axis('off')
         ax[1,2].axis('off')
-        pl.savefig(plots_folder + "{0}GraphPkkExamples.pdf".format(graph_type))
+        pl.savefig(plots_folder + "{0}N{1}GraphPkkExamples.pdf".format(
+                                                    graph_type, N))
                  
+    show_network = 0
+    if show_network:
+        N = 500
+        graph_type = "ScaleFree"
+        pl.seed(1)
+        alpha = 2.27
+        avg_deg = 4.0
+        if "andom" in graph_type:
+            G = nx.fast_gnp_random_graph(N, p = 4/N)
+        else:
+            G = nx.barabasi_albert_graph(N, 2)
+            degrees, dk, degree_sequence = get_scale_free_degrees(
+                                        N, alpha, avg_deg)
+
+        #degree_sequence = [k for node_id, k in G.degree()]
+        k_max = pl.amax(degree_sequence)
+        #degrees = pl.arange(1, k_max + 2)
+        #dk = pl.histogram(degree_sequence, bins = degrees)[0]
+        #degrees = degrees[:-1]
+        degrees = degrees[dk != 0]
+        dk = dk[dk!=0]
+
+        edges = degrees*dk
+        p_a = 0.0
+        p_d = 0.0
+        p_random = 1.0 - p_a -p_d 
+
+
+        G, jkk = build_weighted_graph(degrees, dk,
+                                        p_a, p_d, p_random, True)
+        pl.figure(figsize = (8,6))
+        pos = nx.spring_layout(G)
+        nx.draw(G, pos, node_size = 10, edge_color = 'C7')
+        pl.savefig(plots_folder + "Pa{0}Pd{1}{2}Visualization.pdf".format(
+                            p_a, p_d, graph_type))
+
+
     test_build_network = 0
     if test_build_network:
         N = 1000
@@ -1710,7 +1946,8 @@ if __name__ == '__main__':
         k_min = 2
         dk = [0,2,3,4,3,2]
         degrees = [i+1 for i in range(len(dk))]
-        bonus_degrees = [10, 15, 25, 40, 50]#, 100]#, 500]#, 1000, 2000]
+        bonus_degrees = [i+1 for i in range(len(dk), 100)]
+        bonus_degrees = [10, 15, 25, 50, 100, 250, 500]#, 1000, 2000]
         k_max = bonus_degrees[-1]
         dk += [0 for i in range(len(bonus_degrees))]
         degrees += bonus_degrees
@@ -1730,7 +1967,7 @@ if __name__ == '__main__':
         """
         avg_k = pl.dot(degrees, pk)
         params[3] = str(avg_k)
-        N = 500
+        N = 1000
         original_N = N
 
         static_assortativity = False
@@ -1739,11 +1976,11 @@ if __name__ == '__main__':
             p_dissassortative = 0.0
             p_random = 1.0 - p_assortative - p_dissassortative
 
-        pl.seed(2)
+        pl.seed(1)
         
         best_pk = pl.copy(pk)
-        best_entropy = 0.01
-        best_death_age = 0.01
+        best_entropy = -0.01
+        best_death_age = -0.01
 
         best_death_ages = []
         best_entropies = []
@@ -1756,7 +1993,18 @@ if __name__ == '__main__':
         best_G = 1
         best_pkk = 1
 
-        entropy_weighting = 0.97
+        entropy_weighting = 1.0
+        #run_number = 0
+        #run_folder = "Run{}/".format(run_number)
+        #edge_list_folder += run_folder
+        #output_folder += run_folder
+        #params[-4] = run_folder + "SimplyConnected"
+        #params[4] =  output_folder[:-1]
+        if entropy_weighting == 1:
+            p_assortative = 0
+            p_dissassortative = 0
+            p_random = 1
+            mean_death_age = best_death_age
         best_merit = entropy_weighting*best_entropy + (
             1-entropy_weighting)*best_death_age
 
@@ -1766,16 +2014,25 @@ if __name__ == '__main__':
 
         start_time = time.time()
         elapsed_time = (time.time() - start_time)/60 # in minutes
-        run_time = 60 # In minutes
+        run_time = 60 # In minutes0w
+        measure_time = run_time / 10
+        progress = 0
+        num_changes = max_changes
         i = 1
         fractions = []
         while elapsed_time < run_time: 
             i += 1
             N = original_N
             elapsed_time = (time.time() - start_time)/60 # in minutes
-            num_changes = max_changes - i
+            if elapsed_time > measure_time:
+                measure_time += run_time/10
+                progress += 10
+                print("{0}% Done. Iteration {1}. Entropy {2}".format(progress,
+                        i, best_entropies[-1]))
+            if i % 2 == 1:
+                num_changes -= 1
             if num_changes < 1:
-                num_changes = pl.randint(10) + 1
+                num_changes = 1#pl.randint(10) + 1
             pk = pl.copy(best_pk)
             successful_changes = 0
             fraction = pl.random()
@@ -1788,8 +2045,20 @@ if __name__ == '__main__':
                     successful_changes += 1
             
             if entropy_weighting == 1:
-                mean_death_age = 0.0
-                entropy = calculate_entropy(pk)
+                #mean_death_age = 0.0
+                #entropy = calculate_entropy(pk)
+                dk = random_hub_node_degrees(pk, degrees, N)[1]
+                dk = pl.asarray(dk)
+                build_start = time.time()
+                #print("building network, iteration", i)
+                G, jkk = build_weighted_graph(degrees, dk,
+                    p_assortative, p_dissassortative, p_random, True)
+                build_time = time.time() - build_start
+                if type(G) == str:
+                    continue
+                pkk = jkk/pl.sum(jkk)
+                entropy = calculate_entropy(pkk)
+
             else:
                 dk = random_hub_node_degrees(pk, degrees, N)[1]
                 dk = pl.asarray(dk)
@@ -1817,12 +2086,12 @@ if __name__ == '__main__':
                 entropy = calculate_entropy(pkk)
                 simulation_start = time.time()
                 death_ages = run_network(G, edge_list_folder, output_folder,
-                                    params, param_names, measure = "DeathAge")
+                                    params, param_names)
                 simulation_time = time.time() - simulation_start
-                mean_death_age = pl.average(death_ages)/scale
+                mean_death_age = pl.average(death_ages)
 
-            print(
-                "Network Build Time: {0:.3f}, Simulation Time: {1:.3f}".format(
+                print("""Network Build Time: {0:.3f},
+                        Simulation Time: {1:.3f}""".format(
                                                 build_time, simulation_time))
             merit = entropy_weighting*entropy + (
                 1-entropy_weighting)*mean_death_age
@@ -1830,21 +2099,25 @@ if __name__ == '__main__':
 
             #print("Sum of Pk: ", pl.sum(pk), ", Avg k: ", pl.dot(pk, degrees))
 
-            if pl.exp((merit - best_merit)*pl.log(i**3)) > r:
+            #if merit > best_merit:
+            if pl.exp((merit - best_merit)*pl.sqrt(i)*2) > r:
                 best_probs.append([p_assortative, p_dissassortative,
                                                     p_random])
-                best_G = G
-                best_pkk = pkk
                 best_pk = pl.copy(pk)
                 best_pks.append(pl.copy(pk))
-                best_pkk_entropies.append(calculate_entropy(pkk))
-                degree_sequence = [k for node_id, k in G.degree()]
-                sampled_dk = pl.histogram(degree_sequence,
-                        list(degrees) + [pl.inf])[0]
-                best_sampled_dks.append(sampled_dk)
-                best_merit = merit
-                best_death_ages.append(mean_death_age)
                 best_entropies.append(calculate_entropy(best_pk))
+                if entropy_weighting != 1:
+                    best_G = G
+                    degree_sequence = [k for node_id, k in G.degree()]
+                    sampled_dk = pl.histogram(degree_sequence,
+                            list(degrees) + [pl.inf])[0]
+                    best_sampled_dks.append(sampled_dk)
+                    best_death_ages.append(mean_death_age)
+                best_sampled_dks.append(dk)
+                    
+                best_pkk = pkk
+                best_pkk_entropies.append(calculate_entropy(pkk))
+                best_merit = merit
                 best_merits.append(merit)
                 fractions.append(fraction)
                 iterations.append(i)
@@ -1860,73 +2133,504 @@ if __name__ == '__main__':
                     N, k_min, k_max, entropy_weighting))
 
     
-        pl.figure(figsize = (8,6))
-        pl.plot(iterations, best_pkk_entropies, 'C0o', label = "Pkk entropy")
-        pl.plot(iterations, best_entropies, 'C1o', label = "Pk Entropy")
-        pl.ylabel('Entropy (Pkk used in Merit)')
-        pl.xlabel('Iteration')
-        pl.xscale('log')
-        pl.legend()
-        pl.savefig(plots_folder + simulation_details + 'Entropies.pdf')
-
-
-        pl.figure(figsize = (8,6))
-        pl.plot(iterations, best_death_ages, 'C0o')
-        pl.ylabel('Mean Death Age')
-        pl.xlabel('Iteration')
-        pl.xscale('log')
-        pl.savefig(plots_folder + simulation_details + "MeanDeathAges.pdf")
-
-
-        pl.figure(figsize = (8,6))
-        prob_labels = ['Assortative', 'Dissassortative', 'Random']
-        for i in range(3):
-            probs = pl.asarray(best_probs)[:,i]
-            pl.plot(iterations, probs, marker = 'o', ls = 'none',
-                    label = prob_labels[i])
-            pl.ylabel('Assortativity Fraction')
+        if entropy_weighting != 1:
+            pl.figure(figsize = (8,6))
+            pl.plot(iterations, best_pkk_entropies, 'C0o', label = "Pkk entropy")
+            pl.plot(iterations, best_entropies, 'C1o', label = "Pk Entropy")
+            pl.ylabel('Entropy (Pkk used in Merit)')
             pl.xlabel('Iteration')
             pl.xscale('log')
             pl.legend()
-            pl.savefig(plots_folder + simulation_details +
-                    "AssortativityFractions.pdf")
-        """
-        pl.figure(figsize = (8,6))
-        pl.plot(iterations, best_merits)
+            pl.savefig(plots_folder + simulation_details + 'Entropies.pdf')
 
-        pl.figure(figsize = (8,6))
-        pl.plot(iterations, fractions)
-        """
-        if len(best_merits) > 1:
-            best_merits[0] = best_merits[1]
-        colours = get_colours_from_cmap(pl.arange(len(best_merits)))
-        pl.figure(figsize = (8,6))
-        for i, colour in enumerate(colours):
-            pl.plot(degrees, best_sampled_dks[i], c = colour, ls = 'none',
-                marker = 'o')
-        pl.plot(degrees, best_sampled_dks[-1], 'C3*')
-        pl.yscale('log')
-        pl.xscale('log')
-        pl.ylabel('Sampled D(k)')
-        pl.xlabel('k')
-        pl.savefig(plots_folder + simulation_details + "DegreeCounts.pdf")
+            pl.figure(figsize = (8,6))
+            pl.plot(iterations, best_death_ages, 'C0o')
+            pl.ylabel('Mean Death Age')
+            pl.xlabel('Iteration')
+            pl.xscale('log')
+            pl.savefig(plots_folder + simulation_details + "MeanDeathAges.pdf")
+
+            pl.figure(figsize = (8,6))
+            prob_labels = ['Assortative', 'Dissassortative', 'Random']
+            for i in range(3):
+                probs = pl.asarray(best_probs)[:,i]
+                pl.plot(iterations, probs, marker = 'o', ls = 'none',
+                        label = prob_labels[i])
+                pl.ylabel('Assortativity Fraction')
+                pl.xlabel('Iteration')
+                pl.xscale('log')
+                pl.legend()
+                pl.savefig(plots_folder + simulation_details +
+                        "AssortativityFractions.pdf")
+
+            if len(best_merits) > 1:
+                best_merits[0] = best_merits[1]
+            colours = get_colours_from_cmap(pl.arange(len(best_merits)))
+            pl.figure(figsize = (8,6))
+            #for i, colour in enumerate(colours):
+            #    pl.plot(degrees, best_sampled_dks[i], c = colour, ls = 'none',
+            #        marker = 'o')
+            pl.plot(degrees, best_sampled_dks[-1], 'C0o')
+            pl.yscale('log')
+            pl.xscale('log')
+            pl.ylabel('Sampled D(k)')
+            pl.xlabel('k')
+            pl.savefig(plots_folder + simulation_details + "DegreeCounts.pdf")
+
+            pl.figure(figsize = (8,6))
+            G, pkk = best_G, best_pkk
+            pos = nx.spring_layout(G)
+            nx.draw(G, pos, node_size = 8, edge_color = 'C7')
+            pl.savefig(plots_folder + simulation_details + "FinalNetwork.pdf")
+
+            pl.figure(figsize = (8,6))
+            pl.imshow(pkk, origin = 'lower')
+            pl.xticks(pl.arange(len(degrees)), labels = degrees)
+            pl.yticks(pl.arange(len(degrees)), labels = degrees)
+            pl.colorbar()
+            pl.savefig(plots_folder + simulation_details + "FinalPkk.pdf")
+        else:
+            pl.figure(figsize=(8,6))
+            pl.plot(degrees, best_sampled_dks[-1], 'C0o')
+            pl.xlabel('k')
+            pl.ylabel('Sampled D(k)')
+            pl.yscale('log')
+            pl.xscale('log')
+            pl.savefig(plots_folder + simulation_details + "DegreeCounts.pdf")
+
+            pl.figure(figsize = (8,6))
+            pl.plot(iterations, best_pkk_entropies, 'C0o', label = "Pkk entropy")
+            pl.plot(iterations, best_entropies, 'C1o', label = "Pk Entropy")
+            pl.ylabel('Entropy (Pkk used in Merit)')
+            pl.xlabel('Iteration')
+            pl.xscale('log')
+            pl.legend()
+            pl.savefig(plots_folder + simulation_details + 'Entropies.pdf')
 
 
+            pl.figure(figsize = (8,6))
+            pl.imshow(best_pkk, origin = 'lower')
+            pl.xticks(pl.arange(len(degrees)), labels = degrees)
+            pl.yticks(pl.arange(len(degrees)), labels = degrees)
+            pl.colorbar()
+            pl.savefig(plots_folder + simulation_details + "FinalPkk.pdf")
 
-        pl.figure(figsize = (8,6))
-        G, pkk = best_G, best_pkk
 
-        pos = nx.spring_layout(G)
-        nx.draw(G, pos, node_size = 8, edge_color = 'C7')
-        pl.savefig(plots_folder + simulation_details + "FinalNetwork.pdf")
-
-        pl.figure(figsize = (8,6))
-        pl.imshow(pkk, origin = 'lower')
-        pl.xticks(pl.arange(len(degrees)), labels = degrees)
-        pl.yticks(pl.arange(len(degrees)), labels = degrees)
-        pl.colorbar()
-        pl.savefig(plots_folder + simulation_details + "FinalPkk.pdf")
-
+    test_motifs = 0
+    if test_motifs:
         
+        motifs = ["star", "ball", "chain", "parents"]
+        N_values = pl.logspace(1, 8, 8, base = 2).astype(int)  
+        measures = ["DeathAges", "HealthyAging", "HANorm"]
+        measure_labels = ["Mean Death Age", "Mean QALY", "Mean HA"]
+
+        params[3] = "1"
+        
+        means = []
+        errors = []
+        for motif in motifs:
+            motif_means = []
+            motif_errors = []
+            for N in N_values:
+                run_errors= []
+                run_means = []
+                G = build_motif_graph(motif, N)
+                data = run_network(G, edge_list_folder, output_folder,
+                                    params, param_names, measures = measures)
+                num = len(data[0])
+                for measure in data:
+                    run_means.append(pl.average(measure))
+                    run_errors.append(pl.std(measure)/pl.sqrt(num-1))
+                motif_means.append(run_means)
+                motif_errors.append(run_errors)
+            means.append(motif_means)
+            errors.append(motif_errors)
+
+        colours = ["C0", "C1", "C2", "C3"]
+        markers = ["*", "o", "d", "s"]
+        lines = ["-", ":", "--", "-."]
+        for k, measure_label in enumerate(measure_labels):
+            pl.figure(figsize = (8,6))
+            for i, motif in enumerate(motifs):
+                run_means = []
+                run_errors = []
+                for j, N in enumerate(N_values):
+                    run_mean = means[i][j][k]
+                    run_error = errors[i][j][k]
+                    if "HA" in measure_label:
+                        run_mean *= 100
+                        run_error *= 100
+                    run_means.append(run_mean)
+                    run_errors.append(run_error)
+                pl.errorbar(N_values, run_means, yerr = run_errors,
+                            fmt = "{0}{1}{2}".format(colours[i], markers[i],
+                                                    lines[k]),
+                            label = motif, capsize = 3)
+            pl.xlabel('N')
+            pl.ylabel(measure_label)
+            pl.legend()
+            pl.xscale('log')
+            pl.savefig(plots_folder + "Motifs{}.pdf".format(measure_label))
+
+    visualize_motifs = 0
+    if visualize_motifs:
+        motifs = ["star", "ball", "chain", "parents"]
+        N = 8
+        fig, axes = pl.subplots(2,2, figsize = (8,6))
+        subplot_labels = [a + ')' for a in string.ascii_lowercase]
+        for i, motif in enumerate(motifs):
+            p = axes[int(i > 1), i%2]
+            G = build_motif_graph(motif, N)
+            pos = nx.spring_layout(G)
+            nx.draw(G, pos, node_size = 10, edge_color = 'C7', ax = p)
+            p.annotate(subplot_labels[i], xy = (0.05, 0.9),
+                xycoords = 'axes fraction', fontsize = fs)
+
+            p.set_title(motif + " motif")
+
+        pl.savefig(plots_folder + "MotifExamples.pdf")
+
+
+    check_death_ball = 0
+    if check_death_ball:
+        measures = ["DeathAges", "HealthyAging", "HANorm"]
+        measure_labels = ["Mean Death Age", "Mean QALY", "Mean HA"]
+
+
+
+        #output_folder = "BallAndChainData/"
+        #initial_distribution = "SimplyConnected"
+        #edge_list_folder = "BallAndChainEdges/"
+        number = "10000"
+        avg_k = "4"
+        param_names = ['number', 'N', 'numChanges', 'avgDeg', 'folder',
+            'singleseed', 'evoCondition', 'InitialDistribution',
+            'lambda', 'beta', 'power']
+        params = [number, N, numChanges, avg_k, output_folder, seed,
+            run_hours, evo_condition, initial_distribution, Lambda,
+            beta, power]
+
+
+        #optimal_data_dir = '../CoolingCode/OptimalNetworkData/'
+        #files = os.listdir(optimal_data_dir)
+        #file_name_format = ("DeathAgesNumber100000N{0}NumChanges0AvgDeg4" +
+        #    "Seed1MeritnoneInitialDistributionN{0}Nc{1}optimalLambda0.0" + 
+        #    "Beta100.0Power1.0")
+        Nc_values = [1, 5, 10, 20]
+        N_values = [50, 100, 200, 500, 1000, 5000, 10000]
+
+        errors = []
+        means = []
+        for Nc in Nc_values:
+            N_means = []
+            N_errors = []
+            for N in N_values:
+                
+                avg_k = float(avg_k)
+                run_means = []
+                run_errors = []
+                G, mort_nodes, fi_nodes  = optimal_network(N, Nc, avg_k,
+                                                            Nc)
+                params[1] = str(N)
+                if N == 50:
+                    pl.figure()
+                    pos = nx.spring_layout(G)
+                    nx.draw(G, pos, node_size = 10, edge_color = 'C7')
+                data = run_network(G, edge_list_folder, output_folder,
+                                    params, param_names, measures = measures)
+                num = len(data[0])
+                
+                for measure in data:
+                    run_means.append(pl.average(measure))
+                    run_errors.append(pl.std(measure)/pl.sqrt(num-1))
+                print("N:{0},Nc:{1},<td>={2:.3f}".format(N, Nc, run_means[0]))
+                N_means.append(run_means)
+                N_errors.append(run_errors)
+            means.append(N_means)
+            errors.append(N_errors)
+
+        colours = ["C0", "C1", "C2", "C3"]
+        markers = ["*", "o", "d", "s"]
+        lines = ["-", ":", "--", "-."]
+        for k, measure_label in enumerate(measure_labels):
+            pl.figure(figsize = (8,6))
+            for i, Nc in enumerate(Nc_values):
+                run_means = []
+                run_errors = []
+                for j, N in enumerate(N_values):
+                    run_mean = means[i][j][k]
+                    run_error = errors[i][j][k]
+                    run_means.append(run_mean)
+                    run_errors.append(run_error)
+                pl.errorbar(N_values, run_means, yerr = run_errors,
+                            fmt = "{0}{1}{2}".format(colours[i], markers[i],
+                                                    lines[i]),
+                            label = "{} Hubs".format(Nc), capsize = 3)
+            pl.xlabel('N')
+            pl.ylabel(measure_label)
+            pl.legend()
+            pl.xscale('log')
+            pl.savefig(plots_folder + "BallAndChain{}.pdf".format(
+                                                            measure_label))
+
+    variational_optimization = 1
+    if variational_optimization:
+        alpha = 2.27
+        best_alpha = alpha
+        width = 0.03
+        limits = [2.00001, 5.0]
+        avg_deg = 4.0
+        N = 1000
+        seed = 1
+        degrees, dk, degree_sequence = get_scale_free_degrees(
+                                    N, alpha, avg_deg, seed)
+        k_min = 2
+        k_max = "UNDEF"
+
+        avg_k = pl.average(degree_sequence)
+        params[3] = str(avg_deg)
+        original_N = N
+        output_folder = "testTemp/"
+        edge_list_folder = "testTemp/"
+        params[4] = output_folder
+
+        static_assortativity = False
+        if static_assortativity:
+            p_assortative = 0.0
+            p_dissassortative = 0.0
+            p_random = 1.0 - p_assortative - p_dissassortative
+
+        pl.seed(1)
+        
+        best_entropy = -0.01
+        best_death_age = -0.01
+
+        best_death_ages = []
+        best_entropies = []
+        best_pkk_entropies = []
+        best_merits = []
+        best_pks = []
+        best_sampled_dks = []
+        best_probs = []
+        iterations = []
+        best_degrees = []
+        best_params = []
+        best_G = 1
+        best_pkk = 1
+
+        entropy_weighting = 0.0
+        if entropy_weighting == 1:
+            static_assortativity = True
+            p_assortative = 0
+            p_dissassortative = 0
+            p_random = 1
+            mean_death_age = best_death_age
+        best_merit = entropy_weighting*best_entropy + (
+            1-entropy_weighting)*best_death_age
+
+
+        fraction = 0.1
+        max_changes = 100
+
+        start_time = time.time()
+        elapsed_time = (time.time() - start_time)/60 # in minutes
+        run_time = 1 # In minutes0w
+        measure_time = run_time / 10
+        progress = 0
+        num_changes = max_changes
+        i = 1
+        fractions = []
+        while elapsed_time < run_time: 
+            i += 1
+            N = original_N
+            elapsed_time = (time.time() - start_time)/60 # in minutes
+            if elapsed_time > measure_time:
+                measure_time += run_time/10
+                progress += 10
+                print("{0}% Done. Iteration {1}. Entropy {2}".format(progress,
+                        i, best_entropies[-1]))
+            alpha = pl.copy(best_alpha)
+            alpha = gaussian_parameter_change(alpha, width, limits)
+           
+            if entropy_weighting == 1:
+                degrees, dk, degree_sequence = get_scale_free_degrees(
+                                            N, alpha, avg_deg, seed)
+                build_start = time.time()
+                #print("building network, iteration", i)
+                G, jkk = build_weighted_graph(degrees, dk,
+                    p_assortative, p_dissassortative, p_random, True)
+                build_time = time.time() - build_start
+                if type(G) == str:
+                    continue
+                pkk = jkk/pl.sum(jkk)
+                entropy = calculate_entropy(pkk)
+
+            else:
+                degrees, dk, degree_sequence = get_scale_free_degrees(
+                                            N, alpha, avg_deg, seed)
+                build_start = time.time()
+                print("building network, iteration", i)
+                if not static_assortativity:
+                    p_assortative = pl.random()
+                    p_dissassortative = pl.random()*(1-p_assortative)
+                    p_random = 1.0 - p_assortative - p_dissassortative
+
+                G, jkk = build_weighted_graph(degrees, dk,
+                    p_assortative, p_dissassortative, p_random, True)
+                build_time = time.time() - build_start
+                if type(G) == str:
+                    continue
+                pkk = jkk/pl.sum(jkk)
+
+
+                sampled_N = G.number_of_nodes()
+                if sampled_N < 0.95*original_N:
+                    continue
+                params[1] = str(sampled_N)
+
+
+                entropy = calculate_entropy(pkk)
+                simulation_start = time.time()
+                death_ages = run_network(G, edge_list_folder, output_folder,
+                                    params, param_names)
+                simulation_time = time.time() - simulation_start
+                mean_death_age = pl.average(death_ages)
+
+                print("""Network Build Time: {0:.3f},
+                        Simulation Time: {1:.3f}""".format(
+                                                build_time, simulation_time))
+            merit = entropy_weighting*entropy + (
+                1-entropy_weighting)*mean_death_age
+            r = pl.random()
+
+            #print("Sum of Pk: ", pl.sum(pk), ", Avg k: ", pl.dot(pk, degrees))
+
+            #if merit > best_merit:
+            if pl.exp((merit - best_merit)*pl.sqrt(i)*2) > r:
+                best_probs.append([p_assortative, p_dissassortative,
+                                                    p_random])
+                best_alpha = alpha
+                if entropy_weighting != 1:
+                    best_G = G
+                    sampled_dk = dk 
+                    best_sampled_dks.append(sampled_dk)
+                    best_death_ages.append(mean_death_age)
+                best_pk = pl.copy(dk/N)
+                best_pks.append(best_pk)
+                best_entropies.append(calculate_entropy(best_pk))
+                best_params.append(alpha)
+
+                best_sampled_dks.append(dk)
+                best_degrees.append(degrees)
+                    
+                best_pkk = pkk
+                best_pkk_entropies.append(calculate_entropy(pkk))
+                best_merit = merit
+                best_merits.append(merit)
+                fractions.append(fraction)
+                iterations.append(i)
+
+        if static_assortativity:
+            simulation_details = (
+                'N{0}KMin{1}KMax{2}Lambda{3}Pa{4}Pd{5}Pr{6}'.format(
+                    N, k_min, k_max, entropy_weighting, p_assortative,
+                    p_dissassortative, p_random))
+        else:
+            simulation_details = (
+                'VariationalN{0}Lambda{3}RandomAssortativities'.format(
+                    N, k_min, k_max, entropy_weighting))
+
+        degrees = best_degrees[-1] 
+        if entropy_weighting != 1:
+            pl.figure(figsize = (8,6))
+            pl.plot(iterations, best_pkk_entropies, 'C0o', label = "Pkk entropy")
+            pl.plot(iterations, best_entropies, 'C1o', label = "Pk Entropy")
+            pl.ylabel('Entropy (Pkk used in Merit)')
+            pl.xlabel('Iteration')
+            pl.xscale('log')
+            pl.legend()
+            pl.savefig(plots_folder + simulation_details + 'Entropies.pdf')
+
+            pl.figure(figsize = (8,6))
+            pl.plot(iterations, best_params, 'C0o')
+            pl.ylabel('Scale Free Exponent')
+            pl.xlabel('Iteration')
+            pl.xscale('log')
+            pl.savefig(plots_folder + simulation_details + "BestAlphas.pdf")
+
+
+            pl.figure(figsize = (8,6))
+            pl.plot(iterations, best_death_ages, 'C0o')
+            pl.ylabel('Mean Death Age')
+            pl.xlabel('Iteration')
+            pl.xscale('log')
+            pl.savefig(plots_folder + simulation_details + "MeanDeathAges.pdf")
+
+            pl.figure(figsize = (8,6))
+            prob_labels = ['Assortative', 'Dissassortative', 'Random']
+            for i in range(3):
+                probs = pl.asarray(best_probs)[:,i]
+                pl.plot(iterations, probs, marker = 'o', ls = 'none',
+                        label = prob_labels[i])
+                pl.ylabel('Assortativity Fraction')
+                pl.xlabel('Iteration')
+                pl.xscale('log')
+                pl.legend()
+                pl.savefig(plots_folder + simulation_details +
+                        "AssortativityFractions.pdf")
+
+            if len(best_merits) > 1:
+                best_merits[0] = best_merits[1]
+            colours = get_colours_from_cmap(pl.arange(len(best_merits)))
+            pl.figure(figsize = (8,6))
+            #for i, colour in enumerate(colours):
+            #    pl.plot(degrees, best_sampled_dks[i], c = colour, ls = 'none',
+            #        marker = 'o')
+            pl.plot(best_degrees[-1], best_sampled_dks[-1], 'C0o')
+            pl.yscale('log')
+            pl.xscale('log')
+            pl.ylabel('Sampled D(k)')
+            pl.xlabel('k')
+            pl.savefig(plots_folder + simulation_details + "DegreeCounts.pdf")
+
+            pl.figure(figsize = (8,6))
+            G, pkk = best_G, best_pkk
+            pos = nx.spring_layout(G)
+            nx.draw(G, pos, node_size = 8, edge_color = 'C7')
+            pl.savefig(plots_folder + simulation_details + "FinalNetwork.pdf")
+
+            pl.figure(figsize = (8,6))
+            pl.imshow(pkk, origin = 'lower')
+            pl.xticks(pl.arange(len(degrees)), labels = degrees)
+            pl.yticks(pl.arange(len(degrees)), labels = degrees)
+            pl.colorbar()
+            pl.savefig(plots_folder + simulation_details + "FinalPkk.pdf")
+        else:
+            pl.figure(figsize=(8,6))
+            pl.plot(best_degrees[-1], best_sampled_dks[-1], 'C0o')
+            pl.xlabel('k')
+            pl.ylabel('Sampled D(k)')
+            pl.yscale('log')
+            pl.xscale('log')
+            pl.savefig(plots_folder + simulation_details + "DegreeCounts.pdf")
+
+            pl.figure(figsize = (8,6))
+            pl.plot(iterations, best_pkk_entropies, 'C0o', label = "Pkk entropy")
+            pl.plot(iterations, best_entropies, 'C1o', label = "Pk Entropy")
+            pl.ylabel('Entropy (Pkk used in Merit)')
+            pl.xlabel('Iteration')
+            pl.xscale('log')
+            pl.legend()
+            pl.savefig(plots_folder + simulation_details + 'Entropies.pdf')
+
+
+            pl.figure(figsize = (8,6))
+            pl.imshow(best_pkk, origin = 'lower')
+            pl.xticks(pl.arange(len(degrees)), labels = degrees)
+            pl.yticks(pl.arange(len(degrees)), labels = degrees)
+            pl.colorbar()
+            pl.savefig(plots_folder + simulation_details + "FinalPkk.pdf")
+
+     
 
     pl.show()

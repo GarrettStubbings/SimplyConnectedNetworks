@@ -60,6 +60,7 @@ int main(int argc, char *argv[]) {
     using namespace Parameters; //Using the parameters from cmd lin
     SetDefaultParameters();
     SetReducedParameters(argc, argv);
+    //std::cout << "\n\nFolder:" << Folder << "\n\n";
 
     //std::cout << "Parameters Loaded" << std::endl;
     g1.seed(SingleSeed);
@@ -74,7 +75,7 @@ int main(int argc, char *argv[]) {
     std::vector<double> DeathAges;
     DeathAges.reserve(Number);
     ImportEdgeListNetwork(Network,
-        "EdgeLists/" + initialDistribution + ".csv", N);
+        Folder + initialDistribution + ".csv", N);
 
     //std::cout << "Single Network Created" << std::endl;
 
@@ -103,12 +104,12 @@ int main(int argc, char *argv[]) {
     //loop through runs to average data
     //std::cout << "Running Starts" << std::endl;
     for(int run = 1; run <= Number; run++) {
-	
-       	//Set up network for every seed if not single topology 
+        
+        //Set up network for every seed if not single topology 
         EventTree<double> tree(N, 1.0); 
-	double TotalRate = N; //sum of rates
+        double TotalRate = N; //sum of rates
         double mortalityRate = 0.1;
-	double Time = 0; //current Time (unscaled age)
+        double Time = 0; //current Time (unscaled age)
 
         double oldTime = 0.0; // For calculating timestep in HA
         double dt = 0.0; // Timestep for HealthyAging
@@ -126,16 +127,16 @@ int main(int argc, char *argv[]) {
 
         //evolve in time until Mortality occurs	
         int dummy = 0;
-	while(not dead) {
+        while(not dead) {
             dummy++;
-	    numEvents++;
+            numEvents++;
             //std::cout << TotalRate << "\n";
             //Find rate to be performed 
-	    int Index = FindRate(tree, TotalRate - mortalityRate);
+            int Index = FindRate(tree, TotalRate - mortalityRate);
             //perform rate and increase time
-	    UpdateNode(Network[Index], Time, TotalRate, DeficitsValues); 
+            UpdateNode(Network[Index], Time, TotalRate, DeficitsValues); 
              //update the local frailty after the node is modified
-	    UpdateLocalFrailty(Network, Network[Index]);
+            UpdateLocalFrailty(Network, Network[Index]);
             
             // record the frailty index yearly
             if (year < int(Time/timeScale)){
@@ -144,7 +145,7 @@ int main(int argc, char *argv[]) {
             }
 
             //calculate new rates for the node and its neighbours
-	    CalculateRates(Network, Network[Index], tree, Index, TotalRate); 
+            CalculateRates(Network, Network[Index], tree, Index, TotalRate); 
             
             dt = oldTime-Time;
             updateFrailty(FI, Network[Index], totalNodes);
@@ -162,33 +163,33 @@ int main(int argc, char *argv[]) {
 
             //if(dead == true) break;
             //if(Time > 0.3) break;
-	    //evaluate mortality
-	    //if(Mortality(Network, MortalityNodes) == 1) break;    
+            //evaluate mortality
+            //if(Mortality(Network, MortalityNodes) == 1) break;    
             //if(isnan(TotalRate)) break;
 
-	    oldTime = Time;
-	}
+            oldTime = Time;
+        }
 
         //record healthy aging Data
         healthyAgingVector.emplace_back(HA);
         // record healthy aging norm
         HANormVector.emplace_back(HA/Time);
-	//record death age data
-	DeathAges.emplace_back(Time);
+        //record death age data
+        DeathAges.emplace_back(Time);
         // Record FI History
         populationFIs.emplace_back(FIVector);
-	
-	//Reset Rates and fraility if it is single topology
-	
+        
+        //Reset Rates and fraility if it is single topology
+        
         for(auto &x: Network) x.Reset();  
       
 
-	if (run%10000 == 0)
+        if (run%10000 == 0)
             std::cout << "Run " << run << std::endl;
-	
+        
         //DeficitsValues.clear();
 
-	
+        
     }
     
     //std::cout << "Outputing final data" << std::endl;
@@ -196,7 +197,7 @@ int main(int argc, char *argv[]) {
     OutputMeans(healthyAgingVector, OriginalN, "HealthyAging");
     OutputMeans(HANormVector, OriginalN, "HANorm");
     //Output2d(populationFIs, OriginalN, "PopulationFI");
-    std::cout << "Average Death Age: " << mean(DeathAges) << "\n";
+    //std::cout << "Average Death Age: " << mean(DeathAges) << "\n";
     //std::cout << "Average Healthy Aging: " << mean(healthyAgingVector) << "\n";
     //std::cout << "Average Normalized Healthy Aging: " << mean(
     //    HANormVector) << "\n";

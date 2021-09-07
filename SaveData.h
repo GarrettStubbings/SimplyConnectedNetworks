@@ -50,6 +50,7 @@ void OutputMeans(const std::vector<double> &Means, int OriginalN,
     std::string OutputType) {
 
     std::string name = TempFolder() + OutputType + SetRawName(OriginalN);
+    //std::cout << "Folder: " << TempFolder() << "\n";
     std::ofstream Output;
     //std::cout << "Outputting data to: " << name << "\n";
     Output.open(name.c_str());

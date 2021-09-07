@@ -173,16 +173,16 @@ void SetUpNetwork(std::vector<Node> &Network, std::vector<int> &MortalityNodes, 
 	
     }
 
-    std::cout << "Check Connected " << std::endl;
+    //std::cout << "Check Connected " << std::endl;
     Network = CheckConnected(Network);
 	
     for (auto &x: Network) x.Set_knn(Network);
 	
-    std::cout << "Find Mortality" << std::endl;
+    //std::cout << "Find Mortality" << std::endl;
     MortalityNodes = FindMortalityNodes(Network);
     
     //std::cout << "output Degrees" << std::endl;
-    //OutputNetworkDegrees(Network, OriginalN);
+    OutputNetworkDegrees(Network, OriginalN);
 
     //OutputNetworkStructure(Network, MortalityNodes,OriginalN); //output adjacency matrix
 

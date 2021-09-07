@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --time=00:10:00
+#SBATCH --time=00:05:00
 #SBATCH --ntasks=2
 #SBATCH --cpus-per-task=1
 #SBATCH --mem-per-cpu=1000M
@@ -13,27 +13,30 @@ module load gsl/2.5
 module load gcc/7.3.0
 module load boost/1.66.0
 
-number=9999 # number of runs
-N=200 #network size
-numChanges=1 # Minimum number of moves (will descend to this quickly)
-avgdeg=4 #average degree(must be even for scalefree and smallworld)
-Folder="Local"
-SingleSeed=2
-runHours=0.01
-evoCondition="DeathAge"
-initialDistribution="MaxEntropyN200"
-lambda=0.05
-beta=100.0
-power=0.5
+module load python/3.6
+module load scipy-stack
+virtualenv --no-download $SLURM_TMPDIR/env
+source $SLURM_TMPDIR/env/bin/activate
+pip install --no-index --upgrade pip==21.0.1+computecanada
+pip install --no-index -r requirements.txt
 
-make evo
 
-srun="srun -n1 -N1 --exclusive"
+tempFolder="/home/garretts/scratch/SimplyConnected/"
+outputFolder="Data/"
+details="Sep7Tests/"
+method="Variational"
+numCores=2
 
-parallel="parallel -N 1 --delay 1 -j $SLURM_NTASKS --joblog runlogNov24 --resume"
+make clean
+make clusterTestNetwork
+make clusterMain
 
-$parallel "$srun ./evo $number $N $numChanges $avgdeg\
-    $Folder $SingleSeed \
-    $runHours $evoCondition $initialDistribution {1} {2} {3}" \
-    :::: smallLambdas.txt :::: betaValues.txt :::: coolingPowers.txt
+my_parallel="parallel --delay=0.2 -j $SLURM_NTASKS"
+my_srun="srun --exclusive -N1 -n1 -c1" # --cpus-per-task=1 --cpu-bind=cores"
 
+
+$my_parallel "$my_srun python simple_optimization.py $tempFolder $outputFolder\
+    $details $method {1}" :::: small_lambdas.txt
+
+
+date
