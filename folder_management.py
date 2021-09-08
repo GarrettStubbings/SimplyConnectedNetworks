@@ -6,7 +6,6 @@ import os
 import time
 
 def make_directory(folder):
-
     folders = [f for f in folder.split("/") if f != ""]
 
     if folder[0] == "/":
@@ -18,7 +17,10 @@ def make_directory(folder):
         path += f + "/"
         if not os.path.isdir(path):
             print("Making:", path)
-            os.mkdir(path)
+            try:
+                os.mkdir(path)
+            except FileExistsError:
+                print("Thread safety problems")
 
 def remove_directory(folder):
     folders = [f for f in folder.split("/") if f != ""]
