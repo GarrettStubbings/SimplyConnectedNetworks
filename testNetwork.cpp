@@ -194,8 +194,8 @@ int main(int argc, char *argv[]) {
     
     //std::cout << "Outputing final data" << std::endl;
     OutputMeans(DeathAges, OriginalN,"DeathAges");
-    OutputMeans(healthyAgingVector, OriginalN, "HealthyAging");
-    OutputMeans(HANormVector, OriginalN, "HANorm");
+    OutputMeans(healthyAgingVector, OriginalN, "QALY");
+    OutputMeans(HANormVector, OriginalN, "HealthyAging");
     //Output2d(populationFIs, OriginalN, "PopulationFI");
     //std::cout << "Average Death Age: " << mean(DeathAges) << "\n";
     //std::cout << "Average Healthy Aging: " << mean(healthyAgingVector) << "\n";

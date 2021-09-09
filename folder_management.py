@@ -53,3 +53,7 @@ def remove_directory(folder):
                 print("Additional files, stopping.")
                 break
 
+def clean_directory(folder):
+    for f in os.listdir(folder):
+        os.remove(folder + f)
+

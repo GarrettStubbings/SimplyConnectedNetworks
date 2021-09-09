@@ -1061,22 +1061,24 @@ def run_network(G, running_folder, params, param_names,
     output_files = os.listdir(running_folder)
     #print(output_files)
 
-    performances = []
+    means = []
+    errors = []
     for m in measures:
         performance_file = [running_folder + f for f in output_files if m in
                                                                         f][0]
         performance = pl.loadtxt(performance_file)
-        if "Norm" not in m:
+        if "eath" in m or "QALY" in m:
             performance /= scale
-        performances.append(performance)
+        means.append(pl.average(performance))
+        errors.append(pl.std(performance)/pl.sqrt(len(performance) - 1))
 
     for f in output_files:
         os.remove(running_folder + f)
 
     if len(performance) == 1:
-        return performances[0]
+        return means[0], errors[0]
     else:
-        return performances
+        return means, errors 
 
 def calculate_entropy(p):
     valid_p = p[p > 0]
@@ -1221,7 +1223,7 @@ def network_from_jkk(jkk, degrees, N, return_pkk = False):
                         return G
 
         # ran out of tries
-        print("Couldn't get a connected one")
+        #print("Couldn't get a connected one")
         for sub_G in connected_components[1:]:
             sub_graphs = [degree_sequence[i] for i in sub_G]
             #print(sub_graphs)
@@ -1271,33 +1273,45 @@ def build_motif_graph(motif, N):
 
 if __name__ == '__main__':
 
-    #sub.call(["make", "testNetwork"])
     pl.close('all')
     #pl.seed(2)
     fs = 14
     matrix_folder = 'AdjacencyMatrices/'
     plots_folder = 'Plots/AssortativityWeightedNetworks/'
 
-    ##### Setting parameters for network
-    N = 100
+    ############## parameters of running the simulaton ##############
+
     avg_k = 4
     scale = 0.00183
-    ## parameters of running the simulaton
-    number = "1000"
 
-    entropy_weighting = float(sys.argv[-1])
+    ############### Input parameters ###################
     temp_folder = sys.argv[1]
     output_folder = sys.argv[2]
     details = sys.argv[3]
     method = sys.argv[4]
-    details += "Lambda"+ str(entropy_weighting) + "/"
+    run_time = float(sys.argv[5])
+    N = int(sys.argv[6])
+    number = sys.argv[7]
+    health_measure = sys.argv[8]
+    seed = int(sys.argv[-2])
+    entropy_weighting = float(sys.argv[-1])
+
+    
+    print("RUN PARAMS: Method: {4}, Lambda:{0}, Run Time: {1}, N: {2},"\
+            " number: {3}, Health Measure: {6}, seed: {5}".format(
+            entropy_weighting, run_time, N, number, method, seed,
+            health_measure))
+
+    details += "Lambda"+ str(entropy_weighting) + "/" + "Seed" + str(seed) + "/"
     output_folder = output_folder + details
     running_folder = temp_folder + details
 
     make_directory(output_folder)
     make_directory(running_folder)
+    clean_directory(running_folder)
 
-    seed  = '1'
+    pl.seed(seed)
+    seed  = str(seed)
     Lambda = "0.0"
     beta = "100.0"
     power = "1.0"
@@ -1340,15 +1354,20 @@ if __name__ == '__main__':
         p_random = 1.0 - p_assortative - p_dissassortative
 
 
-    pl.seed(1)
-    
     best_pk = pl.copy(pk)
     best_entropy = -0.01
-    best_death_age = -0.01
+    best_health_mean = -0.01
+    health_mean = best_health_mean
     best_alpha = 2.27
     alpha = best_alpha
 
-    best_death_ages = []
+    measures = ["DeathAge", "HealthyAging", "QALY"]
+    merit_index = pl.where(pl.asarray(measures) == health_measure)[0][0]
+    best_health_means = []
+    best_health_errors = []
+    health_means = [0,0,0]
+    health_errors = [0,0,0]
+
     best_entropies = []
     best_pkk_entropies = []
     best_merits = []
@@ -1366,7 +1385,6 @@ if __name__ == '__main__':
         #print("USING VARIATIONAL")
         #sub.call(["make","main"])
         avg_deg = 4.0
-        seed = 1
         width = 0.03
         limits = [2.0, 5.0]
         degrees, dk, degree_sequence = get_scale_free_degrees(
@@ -1379,17 +1397,15 @@ if __name__ == '__main__':
         p_assortative = 0
         p_dissassortative = 0
         p_random = 1
-        mean_death_age = best_death_age
 
     best_merit = entropy_weighting*best_entropy + (
-        1-entropy_weighting)*best_death_age
+        1-entropy_weighting)*best_health_mean
 
     fraction = 0.1 #polarized changes away from 0.5 (best way to make progress)
     max_changes = 100
 
     start_time = time.time()
     elapsed_time = (time.time() - start_time)/60 # in minutes
-    run_time = 0.05 # In minutes0w
     measure_time = run_time / 10
     progress = 0
     num_changes = max_changes
@@ -1402,8 +1418,8 @@ if __name__ == '__main__':
         if elapsed_time > measure_time:
             measure_time += run_time/10
             progress += 10
-            print("{0}% Done. Iteration {1}. Entropy {2}. <td> {3}".format(
-                    progress, i, best_entropies[-1], best_death_ages[-1]))
+            print("{0}% Done. Iteration {1}. Entropy {2}. <health> {3}".format(
+                    progress, i, best_entropy, best_health_mean))
             if "aria" in method:
                 print("Best Alpha:", best_alpha)
 
@@ -1460,13 +1476,13 @@ if __name__ == '__main__':
         ####### Running The Network #######
         if entropy_weighting != 1:
             simulation_start = time.time()
-            death_ages = run_network(G, running_folder,
-                                params, param_names)
+            health_means, health_errors = run_network(G, running_folder,
+                                params, param_names, measures)
             simulation_time = time.time() - simulation_start
-            mean_death_age = pl.average(death_ages)
+            health_mean = health_means[merit_index] 
 
         merit = entropy_weighting*entropy + (
-                                1-entropy_weighting)*mean_death_age
+                                1-entropy_weighting)*health_mean
         r = pl.random()
 
         ########### Merit Function Evaluation and Update #####################
@@ -1477,14 +1493,17 @@ if __name__ == '__main__':
             best_pks.append(pl.copy(pk))
             best_entropies.append(calculate_entropy(best_pk))
             if entropy_weighting != 1:
-                best_death_ages.append(mean_death_age)
+                best_health_mean = health_mean
+                best_health_means.append(health_means)
+                best_health_errors.append(health_errors)
             best_G = G
             best_sampled_dks.append(dk)
                 
             best_alpha = alpha
             best_alphas.append(best_alpha)
             best_pkk = pkk
-            best_pkk_entropies.append(calculate_entropy(pkk))
+            best_entropy = entropy
+            best_pkk_entropies.append(entropy)
             best_merit = merit
             best_merits.append(merit)
             fractions.append(fraction)
@@ -1494,10 +1513,13 @@ if __name__ == '__main__':
     if save_output:
 
         pl.savetxt(output_folder+"BestPkk.csv", best_pkk, delimiter = ",")
-        pl.savetxt(output_folder+"BestDeathAges.txt",best_death_ages)
+        pl.savetxt(output_folder+"BestHealthMeans.txt",best_health_means)
+        pl.savetxt(output_folder+"BestHealthErrors.txt",best_health_errors)
         pl.savetxt(output_folder+"BestPkkEntropies.txt", best_pkk_entropies)
         pl.savetxt(output_folder+"IterationNumbers.txt", iterations)
         pl.savetxt(output_folder+"BestAlphas.txt", best_alphas)
+        pl.savetxt(output_folder+"BestProportions.txt", best_probs)
+
         nx.write_edgelist(best_G, output_folder+"BestNetwork.csv",
                             delimiter = ",", data = False)
 

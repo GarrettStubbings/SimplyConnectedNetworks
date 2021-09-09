@@ -1,5 +1,6 @@
 #!/bin/bash
 #SBATCH --time=00:05:00
+#SBATCH --nodes=1
 #SBATCH --ntasks=2
 #SBATCH --cpus-per-task=1
 #SBATCH --mem-per-cpu=1000M
@@ -23,9 +24,14 @@ pip install --no-index -r requirements.txt
 
 tempFolder="/home/garretts/scratch/SimplyConnected/"
 outputFolder="Data/"
-details="Sep7Tests/"
+runTime="30" # in Minutes RN
+N="1000"
+number="1000"
 method="Variational"
-numCores=2
+seed="1"
+healthMeasure="HealthyAging" # Options: HealthyAging, DeathAge, QALY
+details="Sep9Tests/$method/N$N/$healthMeasure/"
+entropyWeight=0.5
 
 make clean
 make clusterTestNetwork
@@ -35,8 +41,8 @@ my_parallel="parallel --delay=0.2 -j $SLURM_NTASKS"
 my_srun="srun --exclusive -N1 -n1 -c1" # --cpus-per-task=1 --cpu-bind=cores"
 
 
-$my_parallel "$my_srun python simple_optimization.py $tempFolder $outputFolder\
-    $details $method {1}" :::: small_lambdas.txt
-
+$my_parallel "$my_srun python optimization.py $tempFolder $outputFolder\
+    $details $method $runTime $N $number $healthMeasure {1} $entropyWeight\
+    " :::: seeds.txt
 
 date
