@@ -1332,8 +1332,9 @@ if __name__ == '__main__':
     dk = [0,2,3,4,3,2]
     degrees = [i+1 for i in range(len(dk))]
     bonus_degrees = [i+1 for i in range(len(dk), 100)]
-    bonus_degrees = [10, 20, 30, 40, 50, 75, 100, 200, 300, 400, 500]#, 1000, 2000]
-    bonus_degrees = [k for k in bonus_degrees if k <= N]
+    bonus_degrees = [10, 15, 20, 30, 40, 50, 75, 100, 150, 200, 300, 400, 500,
+                    1000, 2000]
+    bonus_degrees = [k for k in bonus_degrees if k < N]
     k_max = bonus_degrees[-1]
     dk += [0 for i in range(len(bonus_degrees))]
     degrees += bonus_degrees
