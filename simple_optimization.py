@@ -1202,7 +1202,7 @@ def network_from_jkk(jkk, degrees, N, return_pkk = False):
                     return G
             elif len(biggest_component) >= 0.99 * N:
                 G = G.subgraph(biggest_component)
-                print("Using the Giant Component")
+                #print("Using the Giant Component")
                 G = nx.relabel.convert_node_labels_to_integers(G,
                                     first_label=0, ordering='default')
                 if return_pkk:
