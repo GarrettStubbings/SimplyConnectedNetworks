@@ -1051,7 +1051,18 @@ def run_network(G, running_folder, params, param_names,
     # compile if needed
     command = ['./testNetwork'] + params 
     raw_start_time = time.time()
-    sub.call(command)
+    success = 0
+    tries = 0
+    while not success:
+        try:
+            sub.call(command)
+            success = 1
+        except OSError:
+            time.sleep(3)
+            if tries%100000 == 0:
+                print("Ran into the Text File Error Again, Try", tries)
+                #sub.call(["make", "clusterTestNetwork"])
+            success = 0
     raw_simulation_time = time.time()  - raw_start_time
     #print("Real Simulation Time: {0:.3f}, Network Travel() time: {1:.3f}".format(
     #    raw_simulation_time, network_travel_time))
