@@ -28,6 +28,28 @@ mpl.rcParams['lines.linewidth'] = 1.5
 mpl.rcParams['lines.markeredgecolor'] = 'k'
 mpl.rcParams['lines.markeredgewidth'] = 0.5
 
+def cooling_schedule(iteration, t0, a):
+    temperature = t0 / (1 +  a*pl.log(iteration))
+    return temperature
+
+def check_performance(merit, best_merit, temperature):
+    r = pl.random()
+    performance = (merit - best_merit)/best_merit
+    pass_fail = pl.exp(performance/temperature) > r
+    if pass_fail:
+        print("Merit {0}, Previous Best: {1}, {2} Percent Better".format(
+                merit, best_merit, 100*performance))
+    
+    return pass_fail
+
+def pad_data(data):
+    max_length = max([len(a) for a in data])
+    padded_data = []
+    for d in data:
+        padded_data.append(
+            pl.concatenate([d, pl.full(max_length-len(d), pl.nan)]))
+    return padded_data
+
 def gaussian_parameter_change(param, width, limits):
     """
     Change the parameter proportionally using a fraction generated from a 
@@ -1296,6 +1318,10 @@ if __name__ == '__main__':
     seed = int(sys.argv[-2])
     entropy_weighting = float(sys.argv[-1])
 
+    if method == "NonParametric":
+        k_min = int(sys.argv[9])
+        k_max = int(sys.argv[10])
+        print("k_min: {0}, k_max: {1}".format(k_min, k_max))
     
     print("RUN PARAMS: Method: {4}, Lambda:{0}, Run Time: {1}, N: {2},"\
             " number: {3}, Health Measure: {6}, seed: {5}".format(
@@ -1309,6 +1335,9 @@ if __name__ == '__main__':
     make_directory(output_folder)
     make_directory(running_folder)
     clean_directory(running_folder)
+
+    t0 = 0.1
+    a = 9.0
 
     pl.seed(seed)
     seed  = str(seed)
@@ -1327,26 +1356,22 @@ if __name__ == '__main__':
         run_hours, evo_condition, initial_distribution, Lambda,
         beta, power]
 
-
-    k_min = 2
-    dk = [0,2,3,4,3,2]
-    degrees = [i+1 for i in range(len(dk))]
-    bonus_degrees = [i+1 for i in range(len(dk), 100)]
-    bonus_degrees = [10, 15, 20, 30, 40, 50, 75, 100, 150, 200, 300, 400, 500,
-                    1000, 2000]
-    bonus_degrees = [k for k in bonus_degrees if k < N]
-    k_max = bonus_degrees[-1]
-    dk += [0 for i in range(len(bonus_degrees))]
-    degrees += bonus_degrees
-    degrees = pl.asarray(degrees)
-    dk = pl.asarray(dk)
-    dk = dk[degrees >= k_min]
-    degrees = degrees[degrees >= k_min]
-    pk = pl.asarray(dk)/pl.sum(dk)
-
-    avg_k = pl.dot(degrees, pk)
-    params[3] = str(avg_k)
     original_N = N
+
+    if method == "NonParametric":
+        dk = [0,0,1,4,1,0]
+        degrees = [i+1 for i in range(len(dk))]
+        bonus_degrees = [i+1 for i in range(len(dk), k_max)]
+        dk += [0 for i in range(len(bonus_degrees))]
+        degrees += bonus_degrees
+        degrees = pl.asarray(degrees)
+        dk = pl.asarray(dk)
+        dk = dk[degrees >= k_min]
+        degrees = degrees[degrees >= k_min]
+        pk = pl.asarray(dk)/pl.sum(dk)
+
+        avg_k = pl.dot(degrees, pk)
+        best_pk = pl.copy(pk)
 
     static_assortativity = False
     if static_assortativity:
@@ -1355,9 +1380,9 @@ if __name__ == '__main__':
         p_random = 1.0 - p_assortative - p_dissassortative
 
 
-    best_pk = pl.copy(pk)
-    best_entropy = -0.01
-    best_health_mean = -0.01
+    params[3] = "4" #str(avg_k)
+    best_entropy = 0.01
+    best_health_mean = 0.01
     health_mean = best_health_mean
     best_alpha = 2.27
     alpha = best_alpha
@@ -1374,6 +1399,7 @@ if __name__ == '__main__':
     best_merits = []
     best_pks = []
     best_sampled_dks = []
+    best_degrees = []
     best_probs = []
     best_alphas = []
     iterations = []
@@ -1484,21 +1510,23 @@ if __name__ == '__main__':
 
         merit = entropy_weighting*entropy + (
                                 1-entropy_weighting)*health_mean
-        r = pl.random()
 
         ########### Merit Function Evaluation and Update #####################
-        if pl.exp((merit - best_merit)*pl.sqrt(i)*2) > r:
+        temperature = cooling_schedule(i, t0, a)
+        if check_performance(merit, best_merit, temperature):
             best_probs.append([p_assortative, p_dissassortative,
                                                 p_random])
-            best_pk = pl.copy(pk)
-            best_pks.append(pl.copy(pk))
-            best_entropies.append(calculate_entropy(best_pk))
+            if method == "NonParametric":
+                best_pk = pl.copy(pk)
+                best_pks.append(pl.copy(pk))
+                best_entropies.append(calculate_entropy(best_pk))
             if entropy_weighting != 1:
                 best_health_mean = health_mean
                 best_health_means.append(health_means)
                 best_health_errors.append(health_errors)
             best_G = G
             best_sampled_dks.append(dk)
+            best_degrees.append(degrees)
                 
             best_alpha = alpha
             best_alphas.append(best_alpha)
@@ -1510,7 +1538,7 @@ if __name__ == '__main__':
             fractions.append(fraction)
             iterations.append(i)
 
-    save_output = 1
+    save_output = 0
     if save_output:
 
         pl.savetxt(output_folder+"BestPkk.csv", best_pkk, delimiter = ",")
@@ -1521,12 +1549,15 @@ if __name__ == '__main__':
         pl.savetxt(output_folder+"BestAlphas.txt", best_alphas)
         pl.savetxt(output_folder+"BestProportions.txt", best_probs)
 
+        pl.savetxt(output_folder+"BestDks.txt", pad_data(best_sampled_dks))
+        pl.savetxt(output_folder+"BestDegrees.txt", pad_data(best_degrees))
+
         nx.write_edgelist(best_G, output_folder+"BestNetwork.csv",
                             delimiter = ",", data = False)
 
 
 
-    plot_output = 0
+    plot_output = 1
     if plot_output:
         if static_assortativity:
             simulation_details = (
@@ -1541,13 +1572,21 @@ if __name__ == '__main__':
 
         if entropy_weighting != 1:
             pl.figure(figsize = (8,6))
+            pl.plot(iterations, best_merits, 'C0o', label = "Pkk entropy")
+            pl.ylabel('Merit')
+            pl.xlabel('Iteration')
+            pl.xscale('log')
+            pl.legend()
+
+            """
+            pl.figure(figsize = (8,6))
             pl.plot(iterations, best_pkk_entropies, 'C0o', label = "Pkk entropy")
             pl.plot(iterations, best_entropies, 'C1o', label = "Pk Entropy")
             pl.ylabel('Entropy (Pkk used in Merit)')
             pl.xlabel('Iteration')
             pl.xscale('log')
             pl.legend()
-            pl.savefig(plots_folder + simulation_details + 'Entropies.pdf')
+            #pl.savefig(plots_folder + simulation_details + 'Entropies.pdf')
 
             pl.figure(figsize = (8,6))
             pl.plot(iterations, best_death_ages, 'C0o')
@@ -1566,8 +1605,8 @@ if __name__ == '__main__':
                 pl.xlabel('Iteration')
                 pl.xscale('log')
                 pl.legend()
-                pl.savefig(plots_folder + simulation_details +
-                        "AssortativityFractions.pdf")
+                #pl.savefig(plots_folder + simulation_details +
+                #        "AssortativityFractions.pdf")
 
             if len(best_merits) > 1:
                 best_merits[0] = best_merits[1]
@@ -1581,20 +1620,21 @@ if __name__ == '__main__':
             pl.xscale('log')
             pl.ylabel('Sampled D(k)')
             pl.xlabel('k')
-            pl.savefig(plots_folder + simulation_details + "DegreeCounts.pdf")
+            #pl.savefig(plots_folder + simulation_details + "DegreeCounts.pdf")
 
             pl.figure(figsize = (8,6))
             G, pkk = best_G, best_pkk
             pos = nx.spring_layout(G)
             nx.draw(G, pos, node_size = 8, edge_color = 'C7')
-            pl.savefig(plots_folder + simulation_details + "FinalNetwork.pdf")
+            #pl.savefig(plots_folder + simulation_details + "FinalNetwork.pdf")
 
             pl.figure(figsize = (8,6))
             pl.imshow(pkk, origin = 'lower')
             pl.xticks(pl.arange(len(degrees)), labels = degrees)
             pl.yticks(pl.arange(len(degrees)), labels = degrees)
             pl.colorbar()
-            pl.savefig(plots_folder + simulation_details + "FinalPkk.pdf")
+            #pl.savefig(plots_folder + simulation_details + "FinalPkk.pdf")
+            """
         else:
             pl.figure(figsize=(8,6))
             pl.plot(degrees, best_sampled_dks[-1], 'C0o')
