@@ -433,6 +433,7 @@ def sampled_edge_assignment(k_index, degrees, degree_counts, stubs,
     Resolve any bullshit at the end
     """
     size = len(degrees)
+    N = pl.sum(degree_counts)
     available_stubs = pl.copy(stubs)
     k_stubs = stubs[k_index]
     k = degrees[k_index]
@@ -462,11 +463,12 @@ def sampled_edge_assignment(k_index, degrees, degree_counts, stubs,
     num_attempts = 0
     while stubs[k_index] > 0:
         num_attempts += 1
-        if num_attempts % 100000 == 0:
+        if num_attempts  == 10*N:
             #print(stubs[k_index], "Left to go")
             #print(degrees[available_stubs>0],
             #        available_stubs[available_stubs>0],
             #        stubs[available_stubs>0])
+            print("Tried 10N Times...")
             break
 
 
@@ -1078,7 +1080,7 @@ def run_network(G, running_folder, params, param_names,
             success = 1
         except OSError:
             time.sleep(3)
-            if tries%100000 == 0:
+            if tries == 10*N:
                 print("Ran into the Text File Error Again, Try", tries)
                 #sub.call(["make", "clusterTestNetwork"])
             success = 0
@@ -1091,6 +1093,7 @@ def run_network(G, running_folder, params, param_names,
     output_files = os.listdir(running_folder)
     #print(output_files)
 
+    scale = 0.00183
     means = []
     errors = []
     for m in measures:
