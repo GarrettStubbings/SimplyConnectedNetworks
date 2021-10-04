@@ -36,10 +36,7 @@ def check_performance(merit, best_merit, temperature):
     r = pl.random()
     performance = (merit - best_merit)/best_merit
     pass_fail = pl.exp(performance/temperature) > r
-    if pass_fail:
-        print("Merit {0}, Previous Best: {1}, {2} Percent Better".format(
-                merit, best_merit, 100*performance))
-    
+   
     return pass_fail
 
 def pad_data(data):
@@ -1549,7 +1546,7 @@ if __name__ == '__main__':
             fractions.append(fraction)
             iterations.append(i)
 
-    save_output = 0
+    save_output = 1
     if save_output:
 
         pl.savetxt(output_folder+"BestPkk.csv", best_pkk, delimiter = ",")
@@ -1568,7 +1565,7 @@ if __name__ == '__main__':
 
 
 
-    plot_output = 1
+    plot_output = 0
     if plot_output:
         if static_assortativity:
             simulation_details = (

@@ -25,7 +25,7 @@ $my_srun pip install --no-index --upgrade pip==21.0.1+computecanada
 $my_srun pip install --no-index -r requirements.txt
 
 
-tempFolder="/home/garretts/scratch/SimplyConnected/"
+tempFolder="$SLURM_TMPDIR/" #"/home/garretts/scratch/SimplyConnected/"
 outputFolder="Data/"
 runTime="710" # in Minutes RN
 N="100"
@@ -35,13 +35,13 @@ seed="1"
 healthMeasure="DeathAge" # Options: HealthyAging, DeathAge, QALY
 entropyWeight=0.5
 kMin=2
-kMax=20
+kMax=90
+baseFolder="Oct3"
 if [[ "$method" == "Variational" ]]; then
-    details="Sep21Tests/$method/N$N/$healthMeasure/"
+    details="$baseFolder/$method/N$N/$healthMeasure/"
 else
-    details="Sep21Tests/$method/N$N/$healthMeasure/kMin$kMin/kMax$kMax/"
+    details="$baseFolder/$method/N$N/$healthMeasure/kMin$kMin/kMax$kMax/"
 fi
-
 
 #make clean
 make clusterTestNetwork
@@ -51,6 +51,6 @@ my_parallel="parallel --delay=0.2 -j $SLURM_NTASKS"
 
 $my_parallel "$my_srun python optimization.py $tempFolder $outputFolder\
     $details $method $runTime $N $number $healthMeasure $kMin $kMax {1} {2}\
-    " :::: seeds1.txt :::: lambdas.txt
+    " :::: seeds3.txt  :::: lambdas.txt
 
 date
