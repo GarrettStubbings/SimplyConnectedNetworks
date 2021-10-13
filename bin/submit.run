@@ -1,0 +1,260 @@
+#!/bin/bash
+# Script to submit jobs for serial farming with optional dynamic load balancing.
+# Supports both "one case per job" mode (first argument =-1), and
+# "many cases per job" (dynamic workload balancing) mode (first argument >0).
+# Parameters for each run are in the table (text file) in the current directory, table.dat, one line per case.
+
+
+if test $# -lt 1
+ then
+ echo "Usage:"
+ echo "    submit.run  (number_of_jobs | -1)  [optional_sbatch_arguments]"
+ echo 
+ echo "Options:"
+ echo "    (number_of_jobs | -1)  should be the first argument; can be either"
+ echo "                           -1              (requests that each job will process"
+ echo "                                            only one case), or"
+ echo "                           number_of_jobs  (the target number of task jobs for the"
+ echo "                                           \"many cases per job\" mode - a positive"
+ echo "                                            integer)"
+ echo
+ echo "All other arguments are passed to the sbatch command"
+ echo
+ exit 0
+ fi
+
+# Making sure lockfile is on $PATH:
+if test ! `which lockfile`
+  then 
+  echo
+  echo "lockfile is not on path; exiting"
+  exit 1
+  fi
+
+# Choosing a unique name for the temp dir (should reside on an NFS file system, like /home):
+MyTMPDIR=/home/$USER/tmp/`hostname`.$$
+# Creating the directory:
+mkdir -p $MyTMPDIR &>/dev/null
+
+# Processing command line arguments
+
+RESUB=0
+for arg in $*
+  do
+# The special command line argument "-resub" is not meant to be used directly (it is used internally by resubmit.run script):    
+    if test "$arg" == "-resub"
+       then
+# -resub argument found, so this is a resubmited farm 
+       RESUB=1
+       fi
+  done
+# This is needed in query.run:
+echo $RESUB > resub
+
+# Standard table name (should be in the current directory):
+if test $RESUB -eq 0
+  then
+  TABLE=table.dat
+  else
+  TABLE=table.dat_
+  fi
+  
+if test ! -f $TABLE
+  then
+  echo "File $TABLE doesn't exist. Exiting"
+  exit 1
+  fi    
+  
+# Total number of cases:
+N_cases=`cat "$TABLE" | wc -l`
+echo $N_cases > N_cases
+
+# Maximum number of parallel processes:
+if test "$1" == "-1"
+  then
+# One job per case mode (few jobs):
+   NP=$N_cases
+   SINGLE=1
+  else
+# Dynamic workload balancing mode (many jobs):
+   NP=$1
+   SINGLE=0
+  fi
+
+# All remaining command line arguments (excluding -resubmit) are passed to sbatch command
+SQARGS=""
+if test $# -gt 1
+  then
+  shift 1
+  for arg in $*
+    do
+    if test "$arg" != "-resub"
+       then
+       SQARGS="$SQARGS $arg"
+       fi
+    done
+  fi
+
+# Adding case number at the beginning of each TABLE line (if it is not done yet):
+if test $RESUB -eq 0
+  then
+# Erasing all status.* files only with a fresh submit (not when resubmit):
+  rm -f status.*
+# Was it done yet? Testing first 100 lines to find out:
+  i=0
+  not_done=0
+  while read id line
+    do
+    i=$(($i + 1))
+    if test "$id" != $i
+      then
+      not_done=1
+      break
+      fi
+    if test $i -eq 100
+      then
+      break
+      fi
+    done < $TABLE
+# If not done yet, we do it now:
+  if test $not_done -eq 1
+    then
+    \rm __${TABLE} &>/dev/null
+    cat $TABLE |awk '{printf "%d %s\n", NR, $0}' > __${TABLE}
+#   Overwriting the original table with the one with case id at the beginning of each line:
+    \mv __${TABLE} ${TABLE}
+    fi
+  fi
+
+# NP should be less or equal to N_cases:
+if test $NP -gt $N_cases
+  then
+  NP=$N_cases
+  fi
+
+if test $SINGLE -eq 1
+  then
+  NP=$N_cases
+  fi
+
+# Just in case:  
+if test $NP -lt 1
+  then
+  NP=1
+  fi
+
+# Total number of jobs to submit:
+Ntot=$NP
+# A safeguard:
+if test $Ntot -gt 1000
+  then
+  echo
+  echo "You are about to submit a very large number - $Ntot - jobs."
+  echo "Are you sure? (Type \"yes\" to proceed with job submission.)"
+  read resp
+  if test "$resp" = "yes" -o "$resp" = "Yes" -o "$resp" = "YES"
+   then
+   echo
+   else
+   echo "Exiting"
+   exit 0
+   fi
+  fi
+
+echo "Submitting $N_cases cases from $TABLE as $NP jobs"
+echo
+
+# ** A hackish way to convert the sbatch runtime to PBS_WALLTIME **
+# Reading the job runtime value from the job_script.sh file
+## First, trying to read it as a "#SBATCH -t xxxx" switch:
+t=`grep -E "^#SBATCH +-t" job_script.sh |awk '{print $3}'`
+if test -z "$t"
+  then
+## If the "-t" switch was not found, trying ot read the runtime as "#SBATCH --time=xxxx" switch:
+  t=`grep -E "^#SBATCH +--time" job_script.sh |awk -F "=" '{print $2}'`
+  if test -z "$t"
+     then
+     echo "Job runtime sbatch argument (-t or --time) is missing in job_script.sh. Exiting"
+     exit 1
+     fi 
+  fi
+## Number of column symbols in the runtime:    
+Ncol=`awk -F":" '{print NF-1}' <<< "${t}"`
+## Number of dashes:    
+Ndash=`awk -F"-" '{print NF-1}' <<< "${t}"`
+d=0; h=0; m=0; s=0
+if test $Ndash -eq 0
+    then
+      case $Ncol in
+        0) m=$t ;;
+        1) m=`echo $t | cut -d : -f 1`
+           s=`echo $t | cut -d : -f 2` ;;
+        2) h=`echo $t | cut -d : -f 1`
+           m=`echo $t | cut -d : -f 2`
+           s=`echo $t | cut -d : -f 3` ;;
+        esac
+    else
+      d=`echo $t | grep \- | cut -d \- -f1`
+      dt=`echo $t | cut -d \- -f 2-`
+      case $Ncol in
+        0) h=$dt ;;
+        1) h=`echo $dt | cut -d : -f 1`
+           m=`echo $dt | cut -d : -f 2` ;;
+        2) h=`echo $dt | cut -d : -f 1`
+           m=`echo $dt | cut -d : -f 2`
+           s=`echo $dt | cut -d : -f 3` ;;
+        esac
+    fi
+# Converting the runime to PBS_WALLTIME format (seconds)
+PBS_WALLTIME=`echo $d $h $m $s | awk '{print (($1*24+$2)*60+$3)*60+$4}'`
+# Sanity check (job runtime should be positive (actually, >30s) and less than 35 days):
+if test $PBS_WALLTIME -lt 30 -o $PBS_WALLTIME -gt 3000000
+ then
+ echo "Wrong job runtime in job_script.sh - $t . Exiting"
+ exit 1
+ fi
+
+rm -f $MyTMPDIR/lock_file $MyTMPDIR/times $MyTMPDIR/dt_cutoff jobids* done &>/dev/null
+# Initial case number (1):
+echo 1 > $MyTMPDIR/number
+
+# Farm name is the current directory name:
+FARM=$(pwd | awk -F \/ '{print $NF}')
+
+# Submitting $NP real jobs to the scheduler
+for ((j=1; j<=$NP; j++))
+ do
+  echo "Submitting job #$j"
+# Passing parameters to the task.run script via environment variables:
+  export TABLE N_cases MyTMPDIR j SINGLE PBS_WALLTIME
+# Submitting a task job (increase the default job submission timeout of 60s to a larger number if needed):
+  JOBID=`timeout 60 sbatch --job-name=${FARM}_${j} $SQARGS --parsable job_script.sh`
+# Testing if jobid is valid (a positive integer):
+  if [[ $JOBID =~ ^[\-0-9]+$ ]] && (( JOBID > 0))
+    then
+# Saving all jobids in a single file (to be used for kill.run etc.):
+    echo $JOBID >> jobids
+    else
+# For occasional cases when jobid is not returned, but the job was in fact submitted
+## Making five attempts, with 10s wait in between
+    for ((ii=1; ii<=5; ii++))
+      do
+      echo "   No jobid returned for the job ${FARM}_${j}; attempt to recover #$ii..."
+      sleep 10
+      JOBID=`timeout 60 squeue --name=${FARM}_${j} -h -o "%18i"`
+      if [[ $JOBID =~ ^[\-0-9]+$ ]] && (( JOBID > 0))
+        then
+        echo "   Success"
+        echo $JOBID >> jobids
+        break
+        fi
+      if test $ii -eq 5
+         then
+         echo "   Couldn't recover the jobid; trying to kill it now..."
+         timeout 60 scancel --jobname=${FARM}_${j}
+         fi
+      done
+    fi
+  done
+
+unset TABLE N_cases MyTMPDIR j SINGLE PBS_WALLTIME

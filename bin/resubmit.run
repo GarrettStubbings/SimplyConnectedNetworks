@@ -1,0 +1,74 @@
+#!/bin/bash
+# Resubmits all the failed runs (with non-zero exit status) plus all cases without a recorded status
+
+if test $# -lt 1
+ then
+ echo "Arguments: [submit.run arguments]"
+ exit 0
+ fi
+
+query.run &>/dev/null
+if test $? -ne 0
+  then
+  echo "Jobs are still running/queued; cannot resubmit"
+  exit 1
+  fi
+
+# Original table:
+TABLE=table.dat
+NP=$1
+N_cases=`cat $TABLE | wc -l`
+
+# New table (for failed and non-ran jobs):
+TABLE2=${TABLE}_
+\rm $TABLE2 &>/dev/null
+
+# Combining all status.* files, and retaining only the cases with non-zero exit status:
+cat status.* | awk '{if ($2!=0) print $1}' | sort -g > failed
+
+# All cases with status:
+cat status.* | cut -d" " -f1 | sort -g > all_status
+# All cases:
+seq 1 $N_cases > all
+# All cases without status:
+cat all all_status | sort -g | uniq -u > no_status
+# Failed + cases without status:
+cat failed no_status | sort -g | uniq > to_run
+
+if test ! -s to_run 
+ then
+ echo
+ echo "No failed/unfinished jobs; nothing to resubmit"
+ exit 0
+ fi
+
+# Creating a new table, only for failed and non-ran jobs:
+while read i
+ do
+ sed -n ${i}p $TABLE >> $TABLE2
+ done < to_run
+
+# Erasing all lines in status.* files with non-zero status:
+for name in status.*
+  do
+  # Number of non-zero status lines:
+  Nbad=`grep -c -v " 0$" $name`
+  # Only processing status files which have at least one non-zero status:
+  if test $Nbad -gt 0
+    then
+    Nall=`cat $name | wc -l`
+    if test $Nbad -lt $Nall
+      then
+      # Only retaining zero status lines:
+      grep " 0$" $name > _$name
+      \mv _$name $name
+      else
+      # All statuses are bad, so simply deleting the file:
+      rm -f $name
+      fi
+    fi
+  done
+
+# Submitting all the failed/unfinished jobs:
+shift 1
+submit.run $NP -resub $*

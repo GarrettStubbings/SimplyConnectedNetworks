@@ -1,0 +1,15 @@
+#!/bin/bash
+# Script to prune (kill queued) jobs for serial farming with dynamic load balancing.
+
+if test $# -eq 1
+  then
+  MyTMPDIR=$1
+  else
+  MyTMPDIR=.
+  fi
+
+# jobids of the jobs which are still queued:
+squeue --states=PD --jobs=$(tr -s '\r\n' ',' < jobids | sed -e 's/,$/\n/') 2>/dev/null | awk '{if (NR>1) print $1}' > ${MyTMPDIR}/to_prune
+
+# Killing the queued jobs:
+scancel $(tr -s '\r\n' ' ' < ${MyTMPDIR}/to_prune) 2>/dev/null

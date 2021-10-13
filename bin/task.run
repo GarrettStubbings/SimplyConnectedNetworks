@@ -1,0 +1,130 @@
+#!/bin/bash
+# The Dynamic Load Balancing script for serial farming processing.
+# Called from job_script.sh.
+# Make sure "lockfile" utility is on $PATH.
+
+# It is assumed that the initial case number is in the file "number".
+# The following environment variables need to be exported (inside submit.run) before submitting the job:
+# TABLE N_cases MyTMPDIR j SINGLE PBS_WALLTIME
+
+# Some preliminary checkups on the health of the node:
+# Making sure lockfile is on $PATH:
+if test ! `which lockfile`
+  then 
+  echo
+  echo "lockfile is not on path on node $HOSTNAME"
+  echo "Exiting..."
+  exit 1
+  fi
+
+## Here we could check if /home/$USER and project are available on the node
+
+# Case is considered to fail if the runtime is shorter than this number of seconds:
+dt_failed=5
+# The meta-job fails if first N_failed_max cases all fail:
+N_failed_max=5
+
+
+N_failed=0
+iloc=0
+
+# While loop goes over individual cases:  
+while test 1 -gt 0
+ do
+#  Using lockfile to prevent collisions between parallel processes:
+lockfile $MyTMPDIR/lock_file
+# Reading the case number to be processed:
+i=`cat $MyTMPDIR/number`
+
+#--------- Block to compute times and estimate if the thread needs to die due to lack of runtime left-----------
+# Current wall clock time:
+t=`date +%s`
+if test "$t0" != ""
+  then
+# Duration of the previous case in seconds:
+  dt=`echo $t0 $t | awk '{print $2-$1}'`
+  echo $dt >> $MyTMPDIR/times
+# In the $SINGLE=1 case, exit after processing one case:
+  if test $SINGLE -eq 1
+    then
+      echo "Exiting after processing one case (-1 option)"
+      if test $i -gt $N_cases
+        then
+        # Creating empty file "done", indicating that "prune.run" can be run now:
+        touch done
+        fi
+      rm -f $MyTMPDIR/lock_file
+      exit 0
+    fi
+  iloc=$(($iloc + 1))
+  if test $dt -lt $dt_failed
+     then
+     N_failed=$(($N_failed + 1))
+     # If first $N_failed_max cases fail (too short) we fail the meta-job, because something must be wrong here
+     if test $N_failed -ge $N_failed_max -a $iloc -ge $N_failed_max
+        then
+        echo "Too many failed (very short) cases - exiting."
+        rm -f $MyTMPDIR/lock_file
+        exit 1
+        fi
+     fi
+# Length of the times table:
+  Nt=`cat $MyTMPDIR/times | wc -l`
+# This is equal to 1 if $Nt is the power of two and >7 (works at least up to a billion cases), and 0 otherwise:
+  doit=`echo $Nt | awk '{x=log($1)/log(2); y=int(x); if ($1>7 && (x-y)^2<1e-18) print 1; else print 0}'`
+# Doing time analysis only for power of two (and >7) cases, to minimize load on file system:
+  if test $doit -eq 1
+   then
+#   Here $Nt can only be power of two and >7, so n=1,2,4,...
+    n=`echo $Nt | awk '{print $1/8}'`
+#   Sorting the times table, and choosing the $n'th longest time as the current cutoff time:
+    dt_cutoff=`sort -gr $MyTMPDIR/times | awk -v n=$n '{if (NR==n) print $0}'`
+    echo $dt_cutoff > $MyTMPDIR/dt_cutoff
+   else
+    if test -f $MyTMPDIR/dt_cutoff
+      then
+      dt_cutoff=`cat $MyTMPDIR/dt_cutoff`
+      fi
+   fi
+# If $dt_cutoff is defined at this point, we will use it to determine if the time is right to stop this thread
+# (we stop this thread if the chance of not finishing the next case before the job's runtime limit is >~10%)
+  if test "$dt_cutoff" != ""
+    then
+#   This relies on env variable PBS_WALLTIME:
+    finish=`echo $t_start $t $PBS_WALLTIME $dt_cutoff | awk '{if ($1+$3-$2<$4) print 1; else print 0}'`
+    if test $finish -eq 1
+      then
+      rm -f $MyTMPDIR/lock_file
+      echo "Not enough runtime left; exiting."
+      exit 0
+      fi
+    fi
+  else
+# Time of starting the thread:
+  t_start=$t
+  fi
+t0=$t
+
+#---------------------------------------------------- end of block -----------------------------------------------
+
+if test $i -gt $N_cases
+ then
+# We ran out of workload, and exit.
+ echo "No cases left; exiting."
+# Creating empty file "done", indicating that "prune.run" can be run now:
+ touch done
+ rm -f $MyTMPDIR/lock_file
+ exit 0
+ fi
+ 
+# Updating the case number:
+i1=$(($i + 1))
+echo $i1 > $MyTMPDIR/number
+# Removing the lock:
+rm -f $MyTMPDIR/lock_file
+
+# Computing one case:
+./single_case.sh $TABLE $i
+
+done
+

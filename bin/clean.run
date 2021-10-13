@@ -1,0 +1,35 @@
+#!/bin/bash
+# Deleting all files except for the *.run scripts, lockfile, and test*.dat files, including all subdirectories.
+
+
+# Unique name of a temporary file
+tmp=$USER.$$
+
+# Listing all the local files/directories we want to preserve:
+ls -d -1 bin table.dat job_script.sh single_case.sh README.txt >/tmp/$tmp
+
+# Listing all the local files and directories:
+ls -1 >/tmp/$tmp.0
+
+#Files and directories to be deleted:
+cat /tmp/$tmp.0 /tmp/$tmp | sort | uniq -u >/tmp/$tmp.1
+
+if test -s /tmp/$tmp.1
+then
+echo
+echo "Warning: about to delete the following files and directories:"
+echo
+cat /tmp/$tmp.1
+echo
+echo
+echo "Enter 'yes' to confirm:"
+read a
+if test "$a" == "yes" -o "$a" == "YES" -o "$a" == "Yes"
+  then
+  echo
+  echo "Deleting the files..."
+  \rm -R `cat /tmp/$tmp.1` &>/dev/null
+  fi
+fi
+
+\rm /tmp/$tmp /tmp/$tmp.0 /tmp/$tmp.1

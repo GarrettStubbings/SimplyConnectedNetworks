@@ -1,0 +1,21 @@
+#!/bin/bash
+# Printing the status table
+# By default, sorting by the case number
+# If -f switch is provided, showing the failed cases at the bottom
+
+failed=0
+
+if test $# -eq 1
+  then
+  if test $1 == "-f"
+    then
+    failed=1
+    fi
+  fi
+
+if test $failed -eq 0
+  then
+  cat status.* |sort -n
+  else
+  cat status.* |sort -k 2 -n
+  fi

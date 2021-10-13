@@ -1,0 +1,4 @@
+#!/bin/bash
+# Script to kill jobs for serial farming with dynamic load balancing.
+
+scancel $(tr -s '\r\n' ' ' < jobids)

@@ -1,0 +1,4 @@
+#!/bin/bash
+# Script to list jobs for serial farming with dynamic load balancing.
+
+squeue --jobs=$(tr -s '\r\n' ',' < jobids | sed -e 's/,$/\n/') 2>/dev/null

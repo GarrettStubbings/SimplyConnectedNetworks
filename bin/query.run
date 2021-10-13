@@ -1,0 +1,51 @@
+#!/bin/bash
+# Script to query jobs for serial farming with dynamic load balancing.
+# Exit status = 0 if the serial farm is done, and >0 otherwise
+
+
+# Counting the number of still running or queued jobs:
+VARS=$(squeue --jobs=$(tr -s '\r\n' ',' < jobids | sed -e 's/,$/\n/') 2>/dev/null | awk 'BEGIN {countQ=0; countR=0} {if (NR>1){if($5=="PD"){countQ+=1};if($5=="R"){countR+=1}}} END {print countQ " " countR}')
+
+read -r NQ NR <<< "$VARS"
+
+if test -f done -a $NQ -gt 0 -a $NR -eq 0
+  then
+#  Forcing pruning queued jobs when all cases were computed:
+  echo "Pruning queued jobs"
+  prune.run
+  exit 0
+  fi
+
+# Total number of jobs:
+Ntot=$(cat jobids | wc -l)
+NRQ=$(($NR+$NQ))
+# Number of finished jobs:
+ND=$(($Ntot-$NRQ))
+
+RESUB=`cat resub`
+
+if test $NQ -gt 0 -o $NR -gt 0
+  then
+  echo "$NR running jobs, $NQ queued jobs, $ND done jobs"
+  else
+# Number of successful cases:
+  if test $RESUB == 0
+    then
+    NC_ok=$(cat status.* | awk 'BEGIN {n=0} {if ($2==0){n+=1}} END {print n}')
+    else
+    # Only counting cases present in table.dat_:
+    awk '{print $1" 0"}' table.dat_ >ids
+    NC_ok=`cat status.* ids | sort -k1,1 | uniq -d | wc -l`
+    \rm ids
+    fi
+# Total number of cases:  
+  N_cases=$(cat N_cases)
+  if test $NC_ok -eq $N_cases
+    then
+    echo "The whole serial farm is DONE!"
+    else
+    echo "Current run is done, $(($N_cases - $NC_ok)) cases were not processed or failed; run resubmit.run"
+    fi
+  fi
+
+exit $NRQ
