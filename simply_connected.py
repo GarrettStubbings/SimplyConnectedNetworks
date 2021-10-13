@@ -21,6 +21,7 @@ from evolution_performance import *
 from evo_plotting import *
 from visualization import *
 """
+from cluster_analysis import assortativity_extremes
 import networkx as nx
 import datetime
 date = datetime.date.today().strftime('%e%b%y')
@@ -127,26 +128,33 @@ def optimal_network(N, Nc, avg_k, n_fi_nodes):
            
     return G, mort_nodes, fi_nodes
 
-
-def get_scale_free_degrees(N, alpha, avg_deg, seed):
+def get_scale_free_degrees(N, temp_folder, alpha, avg_deg, seed, pA = 0.0,
+                    return_graph = True):
     """
     Use Spencer's code to get the degree sequence for scale free network of
     given parameters
     """
     # params for generating network
     params = ["0", "0.0", "0.0", "0.0", str(N), "2", str(alpha), str(avg_deg),
-                "AND", "Single", "GeneratedNetworks", "ScaleFree", "0",
-                str(seed), "0.0"]
+                "AND", "Single", temp_folder, "ScaleFree", "0",
+                str(seed), str(pA)]
     #sub.call(["make", "backup"])
     command = ['./main'] + params 
     sub.call(command)
 
-    output_files = os.listdir("GeneratedNetworks/")
-    degree_file = output_files[0]
-    degree_sequence = pl.loadtxt("GeneratedNetworks/" + degree_file)[:,1]
+    output_files = os.listdir(temp_folder)
+    #print(output_files)
+    if not return_graph:
+        degree_file = output_files[0]
+    else:
+        degree_file = [f for f in output_files if "Edge" not in f][0]
+        edge_list_file = [f for f in output_files if "Edge" in f][0]
+    degree_sequence = pl.loadtxt(temp_folder + degree_file)[:,1]
+    if return_graph:
+        G = nx.read_edgelist(temp_folder + edge_list_file)
 
     for f in output_files:
-        os.remove("GeneratedNetworks/" + f)
+        os.remove(temp_folder + f)
 
     k_min = pl.amin(degree_sequence)
     k_max = pl.amax(degree_sequence)
@@ -157,7 +165,12 @@ def get_scale_free_degrees(N, alpha, avg_deg, seed):
     degrees = degrees[dk != 0]
     dk = dk[dk != 0]
 
-    return degrees, dk, degree_sequence
+    
+    if return_graph:
+        return degrees, dk, degree_sequence, G
+    else:
+        return degrees, dk, degree_sequence
+
 
 
 def power_law_distribution(alpha, k_min, k_max, target_avg_k):
@@ -312,7 +325,7 @@ def random_edge_sampling(probabilities, num_edges):
 
     return assigned_edges
 
-# Now Defunked?
+# Now Defunked.
 def weighted_edge_assignment(k_index, degrees, touched_degrees, stubs,
                 degree_counts, p_assortative, p_dissassortative, p_random):
     """
@@ -586,6 +599,7 @@ def sampled_edge_assignment(k_index, degrees, degree_counts, stubs,
     Similar to weighted edge assignment, but different approach
     Resolve any bullshit at the end
     """
+    do_print = False #(len(degree_counts) - k_index < 5)
     size = len(degrees)
     available_stubs = pl.copy(stubs)
     k_stubs = stubs[k_index]
@@ -596,6 +610,10 @@ def sampled_edge_assignment(k_index, degrees, degree_counts, stubs,
     #print(len(stubs), len(degree_counts), dk)
     node_constraints = dk*degree_counts
     node_constraints[k_index] = dk*(dk-1)//2
+
+    if do_print:
+        print("Stubs:",stubs)
+        print("Node Constraints:",node_constraints)
 
     # have to run everything off of the constrained availability of nodes
     # likely to only matter along the diagonal?
@@ -646,6 +664,12 @@ def sampled_edge_assignment(k_index, degrees, degree_counts, stubs,
             while available_stubs[k_prime_index] == 0:
                 k_prime_index -= 1
                 assortative_index = k_prime_index
+            """
+            if do_print:
+                print("k:", degrees[k_index], "Assortative Index:",
+                        assortative_index,
+                        "Degree:, ", degrees[assortative_index])
+            """
 
         # dissassortative choice
         elif method == 1:
@@ -688,6 +712,7 @@ def sampled_edge_assignment(k_index, degrees, degree_counts, stubs,
         if (min_k_stubs <= 2) and k_index == k_prime_index and (
             pl.sum(stubs != 0) > 1):
             #print("Doin illegal stuff")
+
             if assortative_condition:
                 assortative_index -= 1
                 assortative_condition = False
@@ -697,6 +722,7 @@ def sampled_edge_assignment(k_index, degrees, degree_counts, stubs,
                 pl.sum(available_stubs != 0) == 2) and (min_k_stubs >= 2):
             #print("\n\nOnly One Move Left")
             #print(available_stubs)
+
             k_prime_index = k_index
 
 
@@ -708,7 +734,11 @@ def sampled_edge_assignment(k_index, degrees, degree_counts, stubs,
         assigned_stubs[k_prime_index] += 1
     if k_prime_index == size:
         print(k_index, available_stubs, assigned_stubs)
-    
+
+    if do_print:
+        print("Degree:", degrees[k_index], "Assigned Stubs",
+            assigned_stubs)
+
     return assigned_stubs, stubs
 
 def degree_1_edge_assignment(k_index, degrees, degree_counts, stubs,
@@ -1441,7 +1471,87 @@ def build_motif_graph(motif, N):
 
     return G
 
+def show_log_jkk(degrees, dk, degree_sequence, G, title = "Log Jkk"):
+    print("Number of Nodes:", G.number_of_nodes(),
+        "Number of edges:", G.number_of_edges())
+    edge_list = [e for e in G.edges]
+    #print("Number of Edges", len(edge_list))
+    #print("First 10:", edge_list[:10])
+    edge_degrees = [[G.degree(i) for i in e] for e in edge_list]
+    #print("Degrees of First 10:", edge_degrees[:10])
+    degree_ranks = pl.arange(len(degrees))
+    degrees = pl.asarray(sorted(list(set([k for _, k in G.degree()]))))
+    #print(degrees)
+    #print(degrees)
+    #print(pl.arange(len(degrees)))
+    jkk = pl.zeros([len(degrees), len(degrees)])
+    for n, e in enumerate(edge_list):
+        l, m = [int(node_id) for node_id in e]
+        k_l, k_m = edge_degrees[n]
+        i = pl.where(degrees == k_l)[0][0]
+        j = pl.where(degrees == k_m)[0][0]
 
+        jkk[i,j] += 1
+        jkk[j,i] += 1
+    #print("Sum of Jkk:", pl.sum(jkk))
+    print("Row-Wise:", pl.sum(jkk, axis = 1).astype(int)/degrees)
+    jkk[jkk == 0] = pl.nan
+    #jkk[~pl.isnan(jkk)] = pl.log(jkk[~pl.isnan(jkk)])
+    pl.figure(figsize = (8,6))
+    pl.imshow(jkk, origin = 'lower')
+    degrees = degrees.astype(int)
+    pl.xticks(pl.arange(len(degrees)), labels = degrees)
+    pl.yticks(pl.arange(len(degrees)), labels = degrees)
+
+    pl.title(title)
+    pl.colorbar()
+
+def swap_edges(e0, e1, k0, k1):
+    base_r = (pl.diff(k0) + pl.diff(k1))[0]
+    rs = [base_r]
+    edge_pairs= [[e0, e1]]
+    degree_pairs = [[k0, k1]]
+    for i in range(2):
+        r = k0[0] - k1[i] + k0[1] - k1[(i+1)%2]
+        edge_pair = [[e0[0], e1[i]], [e0[1], e1[(i+1)%2]]]
+        degree_pair = [[k0[0], k1[i]], [k0[1], k1[(i+1)%2]]]
+        edge_pairs.append(edge_pair)
+        degree_pairs.append(degree_pair)
+        rs.append(r)
+    rs = pl.asarray(rs)
+    best_index = pl.where(rs == pl.amax(rs))[0][0]
+    best_edges = edge_pairs[best_index]
+    best_degrees = degree_pairs[best_index]
+    best_r = pl.amax(rs)
+    difference = r - best_r
+    return best_edges, best_degrees, difference
+
+
+
+def shuffle_edges(G, swaps_per_edge = 1):
+    edge_list = [e for e in G.edges]
+    num_edges = len(edge_list)
+    total_swaps = int(num_edges * swaps_per_edge)
+    edge_degrees = [[G.degree(i) for i in e] for e in edge_list]
+    indices = pl.arange(num_edges)
+    r_differences = []
+    for i in range(total_swaps):
+        i0, i1 = pl.choice(indices, replace = False, size = 2)
+        e0 = edge_list[i0]
+        e1 = edge_list[i1]
+        k0 = edge_degrees[i0]
+        k1 = edge_degrees[i1]
+        new_edges, new_degrees, r_difference = swap_edges(e0, e1, k0, k1)
+        new_e0, new_e1 = new_edges
+        new_k0, new_k1 = new_degrees
+        r_differences.append(r_difference)
+        edge_list[i0] = new_e0
+        edge_list[i1] = new_e1
+        edge_degrees[i0] = new_k0
+        edge_degrees[i1] = new_k1
+    
+    return edge_list, pl.asarray(r_differences)
+     
 
 if __name__ == '__main__':
 
@@ -2373,7 +2483,7 @@ if __name__ == '__main__':
             pl.savefig(plots_folder + "BallAndChain{}.pdf".format(
                                                             measure_label))
 
-    variational_optimization = 1
+    variational_optimization = 0
     if variational_optimization:
         alpha = 2.27
         best_alpha = alpha
@@ -2631,6 +2741,109 @@ if __name__ == '__main__':
             pl.colorbar()
             pl.savefig(plots_folder + simulation_details + "FinalPkk.pdf")
 
-     
+    scale_free_assortativity_check = 1
+    if scale_free_assortativity_check:
+        pA = 0.0
+        N = 1000
+        alpha = 2.3
+        avg_deg = 4
+        seed = 1
+        p_d = 0.0
+        temp_folder = "EdgeLists/Tests/"
+
+        check_pA_values = 0
+        if check_pA_values:
+            pAs = pl.linspace(0, 0.999, 11)
+            colours = get_colours_from_cmap(pAs)
+            degree_assortativities = []
+            remake_rs = []
+            Ns = pl.zeros_like(pAs)
+            remade_Ns = pl.zeros_like(pAs)
+            pl.figure(figsize = (8,6))
+            for i, pA in enumerate(pAs):
+                degrees, dk, degree_sequence, G = get_scale_free_degrees(N,
+                                            temp_folder, alpha, avg_deg, seed, pA,
+                                            return_graph=True)
+                pl.plot(degrees, dk, c = colours[i], ls = "none", marker = "o")
+                remade_G = build_weighted_graph(degrees, dk, pA, p_d, 1-pA)
+                remade_Ns[i] = dk[0]#remade_G.number_of_nodes()
+                r = nx.degree_assortativity_coefficient(G)
+                remade_r =nx.degree_assortativity_coefficient(remade_G)
+                degree_assortativities.append(r)
+                Ns[i] = G.number_of_nodes()
+                remake_rs.append(remade_r)
+            pl.xscale('log')
+            pl.yscale('log')
+            pl.figure(figsize=(8,6))
+            pl.plot(pAs, degree_assortativities)
+            pl.plot(pAs, remake_rs)
+            pl.axhline(0, c = "C7")
+            pl.plot(pAs, remade_Ns/N, "C0:")
+            pl.plot(pAs, Ns/N, "C1:")
+        
+        check_pkks = 0
+        if check_pkks:
+            pA = 0.99
+            N = 200
+            print("Original Network:")
+            degrees, dk, degree_sequence, G = get_scale_free_degrees(N,
+                                    temp_folder, alpha, avg_deg, seed, pA,
+                                    return_graph=True)
+            print([v for k, v in G.degree])
+            print("Dot Product", pl.dot(dk, degrees))
+            print("Number of Self Loops", nx.number_of_selfloops(G))
+            show_log_jkk(degrees, dk, degree_sequence, G, "After The Fact")
+
+            print("Remade Network:")
+            remade_G, remade_pkk = build_weighted_graph(degrees, dk, pA,
+                                        p_d, 1-pA, True)
+            pl.figure()
+            #remade_pkk[remade_pkk != 0] = pl.log(remade_pkk[remade_pkk != 0])
+            remade_pkk[remade_pkk == 0] = pl.nan
+            pl.imshow(remade_pkk, origin = 'lower')
+            show_log_jkk(degrees, dk, degree_sequence, remade_G,
+                "Garrett's Shitty Method")
+            print([v for k, v in remade_G.degree])
+
+        check_rewiring = 1
+        if check_rewiring:
+            pA = 0.0
+            N = 200
+            swaps_per_edge = 1
+            print("Original Network:")
+            degrees, dk, degree_sequence, G = get_scale_free_degrees(N,
+                                    temp_folder, alpha, avg_deg, seed, pA,
+                                    return_graph=True)
+            show_log_jkk(degrees, dk, degree_sequence, G, "Original")
+
+            
+            old_r = nx.degree_assortativity_coefficient(G)
+            print("Old R:", old_r)
+
+            new_edges, r_differences = shuffle_edges(G, swaps_per_edge)
+            new_G = nx.from_edgelist(new_edges)
+            new_r = nx.degree_assortativity_coefficient(new_G)
+            num_components = [len(c) for c in nx.connected_components(new_G)] 
+            print("New R:", new_r, num_components,
+                "Connected components.")
+
+            show_log_jkk(degrees, dk, degree_sequence, new_G, "Rewired in Post")
+
+            p_a = 1.0
+            remade_G = build_weighted_graph(degrees, dk, p_a, p_d, 1-p_a)
+            remade_r = nx.degree_assortativity_coefficient(remade_G)
+            print("Garrett's R:", remade_r)
+            show_log_jkk(degrees, dk, degree_sequence, remade_G, "Garrett's")
+
+            new_Garrett_edges, r_differences = shuffle_edges(remade_G,
+                    swaps_per_edge)
+            new_Garrett_G = nx.from_edgelist(new_Garrett_edges)
+            new_r = nx.degree_assortativity_coefficient(new_Garrett_G)
+            print("New R:", new_r)
+            show_log_jkk(degrees, dk, degree_sequence, new_Garrett_G,
+                "Garrett's Rewired in Post")
+
+        
+
 
     pl.show()

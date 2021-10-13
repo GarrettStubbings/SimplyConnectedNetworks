@@ -37,7 +37,24 @@ echo "Case $ID:"
 
 # Executing the command (a line from table.dat)
 # It's allowed to use more than one shell command (separated by semi-columns) on a single line
-eval "$COMM"
+
+# Garrett's code starts here:
+my_srun="srun --exclusive -N1 -n1 -c1" # --cpus-per-task=1 --cpu-bind=cores"
+tempFolder="$SLURM_TMPDIR/" #"/home/garretts/scratch/SimplyConnected/"
+outputFolder="Data/"
+runTime="5" # in Minutes RN
+N="100"
+number="1000"
+method="NonParametric"
+seed="1"
+healthMeasure="DeathAge" # Options: HealthyAging, DeathAge, QALY
+entropyWeight=0.5
+kMin=2
+kMax=10
+details="MetaTests"
+
+eval "$my_srun python optimization.py $tempFolder $outputFolder\
+    $details $method $runTime $COMM"
 
 # Exit status of the code:
 STATUS=$?

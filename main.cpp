@@ -53,6 +53,35 @@ int main(int argc, char *argv[]) {
     g1.seed(Parameters::SingleSeed);
     SetUpNetwork(Network, MortalityNodes, OriginalN);
     //std::cout << "Single Network Created" << std::endl;
+    std::vector<std::vector<int>> edgeList;
+
+    int i = 0;
+    std::vector<int> edge;
+    std::vector<int> reverseEdge;
+    bool alreadyThere = false;
+    for (Node n: Network){
+        int i = n.id;
+        std::cout << "Node " << i << " has degree " << n.k <<
+            " and neighbours: ";
+        for (int j: n.Neighbours){
+            std::cout << j << ", ";
+            edge = {i, j};
+            reverseEdge = {j,i};
+            alreadyThere = false;
+            // check if it's already in there (but backwards)
+            for (auto r: edgeList){
+                if (reverseEdge == r){
+                    alreadyThere = true;
+                    break;
+                }
+            }
+            if (not alreadyThere){
+                edgeList.emplace_back(edge);
+            }
+        }
+        std::cout << "\n";
+    }
+    OutputInts2d(edgeList, OriginalN, "EdgeList.txt");
 
 }
 

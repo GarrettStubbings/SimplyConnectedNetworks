@@ -1329,9 +1329,16 @@ if __name__ == '__main__':
     seed = int(sys.argv[-2])
     entropy_weighting = float(sys.argv[-1])
 
+    details += "/{0}/N{1}/{2}/".format(method, N, health_measure)
+    print("Temp folder:", temp_folder, ", output folder:", output_folder)
+    print(details, method, run_time, N, number, health_measure, seed,
+            entropy_weighting)
+
+    print(method)
     if method == "NonParametric":
         k_min = int(sys.argv[9])
         k_max = int(sys.argv[10])
+        details += "kMin{0}/kMax{1}/".format(k_min, k_max)
         print("k_min: {0}, k_max: {1}".format(k_min, k_max))
     
     print("RUN PARAMS: Method: {4}, Lambda:{0}, Run Time: {1}, N: {2},"\

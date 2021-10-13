@@ -76,7 +76,19 @@ void OutputInts(const std::vector<int> &Means, int OriginalN,
     
 }
 
+void OutputInts2d(const std::vector<std::vector<int>> data, int OriginalN,
+                    std::string dataType){
+    std::string name = TempFolder() + dataType + SetRawName(OriginalN);
+    std::ofstream Output;
+    Output.open(name.c_str());
 
+    for(std::vector<int> row: data){
+        for (int x: row) Output << x << "\t";
+        Output << "\n";
+    }
+    Output.close();
+ 
+}
 
 
 #endif
