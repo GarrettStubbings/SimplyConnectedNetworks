@@ -36,10 +36,7 @@ def check_performance(merit, best_merit, temperature):
     r = pl.random()
     performance = (merit - best_merit)/best_merit
     pass_fail = pl.exp(performance/temperature) > r
-    if pass_fail:
-        print("Merit {0}, Previous Best: {1}, {2} Percent Better".format(
-                merit, best_merit, 100*performance))
-    
+   
     return pass_fail
 
 def pad_data(data):
