@@ -30,9 +30,6 @@ COMM=`echo "$LINE" | cut -d" " -f2-`
 #  $COMM is the line corresponding to the case $ID in the original table, without the ID field
 #  $SLURM_JOB_ID is the jobid for the current meta-job (convenient for creating per-job files)
 
-mkdir -p RUN$ID
-cd RUN$ID
-
 echo "Case $ID:"
 
 # Executing the command (a line from table.dat)
@@ -51,7 +48,7 @@ healthMeasure="DeathAge" # Options: HealthyAging, DeathAge, QALY
 entropyWeight=0.5
 kMin=2
 kMax=10
-details="MetaKMax10"
+details="kMax20"
 
 eval "$my_srun python optimization.py $tempFolder $outputFolder\
     $details $method $runTime $COMM"
@@ -59,7 +56,6 @@ eval "$my_srun python optimization.py $tempFolder $outputFolder\
 # Exit status of the code:
 STATUS=$?
 
-cd ..
 
 # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
