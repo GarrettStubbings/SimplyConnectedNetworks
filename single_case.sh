@@ -47,7 +47,7 @@ seed="1"
 healthMeasure="DeathAge" # Options: HealthyAging, DeathAge, QALY
 entropyWeight=0.5
 kMin=2
-kMax=10
+kMax=20
 details="kMax20"
 
 eval "$my_srun python optimization.py $tempFolder $outputFolder\
