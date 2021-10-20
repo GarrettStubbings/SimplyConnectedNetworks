@@ -39,7 +39,7 @@ echo "Case $ID:"
 my_srun="srun --exclusive -N1 -n1 -c1" # --cpus-per-task=1 --cpu-bind=cores"
 tempFolder="$SLURM_TMPDIR/" #"/home/garretts/scratch/SimplyConnected/"
 outputFolder="Data/"
-runTime="1" # in Minutes RN
+runTime="710" # in Minutes RN
 N="100"
 number="1000"
 method="NonParametric"
