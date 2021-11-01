@@ -39,16 +39,16 @@ echo "Case $ID:"
 my_srun="srun --exclusive -N1 -n1 -c1" # --cpus-per-task=1 --cpu-bind=cores"
 tempFolder="$SLURM_TMPDIR/" #"/home/garretts/scratch/SimplyConnected/"
 outputFolder="Data/"
-runTime="710" # in Minutes RN
+runTime="5" # in Minutes RN
 N="100"
 number="1000"
 method="NonParametric"
 seed="1"
 healthMeasure="DeathAge" # Options: HealthyAging, DeathAge, QALY
 entropyWeight=0.5
-kMin=2
-kMax=20
-details="kMax20"
+entropyTarget=3.0
+nBins=12
+details="targetTest"
 
 eval "$my_srun python optimization.py $tempFolder $outputFolder\
     $details $method $runTime $COMM"

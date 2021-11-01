@@ -61,8 +61,8 @@ int main(int argc, char *argv[]) {
     bool alreadyThere = false;
     for (Node n: Network){
         int i = n.id;
-        std::cout << "Node " << i << " has degree " << n.k <<
-            " and neighbours: ";
+        //std::cout << "Node " << i << " has degree " << n.k <<
+        //    " and neighbours: ";
         for (int j: n.Neighbours){
             std::cout << j << ", ";
             edge = {i, j};

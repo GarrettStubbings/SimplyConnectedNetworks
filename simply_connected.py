@@ -21,6 +21,7 @@ from evolution_performance import *
 from evo_plotting import *
 from visualization import *
 """
+from optimization import *
 from cluster_analysis import assortativity_extremes
 import networkx as nx
 import datetime
@@ -36,6 +37,184 @@ mpl.rcParams['lines.markersize'] = 8
 mpl.rcParams['lines.linewidth'] = 1.5
 #mpl.rcParams['lines.markeredgecolor'] = 'k'
 mpl.rcParams['lines.markeredgewidth'] = 0.5
+
+def log_uniform(low=0, high=1, size=None):
+    return np.exp(np.random.uniform(low, high, size))
+
+def log_sampler(k_max, n, k_start):
+    ks = pl.arange(k_start, k_max)+1
+    ps = 1/(ks) #np.power(2, -(ks)/k_max)
+    probs = ps/pl.sum(ps)
+    ks = pl.choice(ks, n, p = probs, replace = False)
+    ks = sorted(list(ks))
+    return ks
+
+
+def hacky_partition(N, avg_k, k_min, k_max):
+    n_min = N
+    n_max = n_min*k_min/k_max
+    n_max = int(pl.round_(n_max))
+    n_min = n_max * k_max / k_min
+    n_min = int(pl.round_(n_min))
+    
+    print(n_min + n_max, n_min, n_max)
+    max_set = pl.full(n_max, k_max)
+    biggest_set = pl.copy(max_set)
+
+    i = 0
+    # adjust the top degrees
+    while n_min + n_max > N:
+        n_min -= 1
+        max_set[i%n_max] -= 1
+        max_set[(i+1)%n_max] -= 1
+        i += 2
+
+        if pl.sum(biggest_set - max_set) >= k_max:
+            print("Reducing")
+            n_max -= 1
+            max_set = pl.full(n_max, k_max)
+            if n_max % 1 == 1:
+                max_set[0] -= 1
+                i = 1
+            else:
+                i = 0
+            biggest_set = pl.copy(max_set)
+
+
+    real_N = n_max + n_min
+    real_avg_k = (pl.sum(max_set) + n_min*k_min)/N
+    nb = 0
+    eb = 0
+    # the ball must be added to one of the parents
+    if pl.absolute(real_avg_k - avg_k)/avg_k > 0.05:
+        nb = 1
+        max_set[0] += 1
+    give_up = False
+    while pl.absolute(real_avg_k - avg_k)/avg_k > 0.05:
+        # remove a hcild node to add to the ball
+        n_min -= 1
+        # reduce degree of parents it would be attached to
+        max_set[i%n_max] -= 1
+        max_set[(i+1)%n_max] -= 1
+        i += 2
+
+        # add a ball node
+        nb += 1
+        # adjust number of edges (there's one going out of the ball)
+        eb = nb*(nb-1) + 1
+
+        real_avg_k = (eb + pl.sum(max_set) + n_min*k_min)/N
+
+        # reduce number of  parents if necessary
+        if pl.sum(biggest_set - max_set) >= k_max:
+            print("Reducing from <k>")
+            n_max -= 1
+            if n_max == 0:
+                give_up = True
+                break
+            max_set = pl.full(n_max, k_max)
+            if n_max % 1 == 0:
+                max_set[0] -= 1
+                i = 1
+            else:
+                i = 0
+            biggest_set = pl.copy(max_set)
+    real_N = n_max + n_min + nb
+    real_avg_k = (eb + pl.sum(max_set) + n_min*k_min)/N
+    print("Real N:", real_N, "and real <k>:", real_avg_k)
+    print("N min:", n_min, " and K min:", k_min, "so E min:", n_min*k_min)
+    print("Max Set:", max_set)
+    print("Number of Ball Nodes:", nb)
+
+    real_N = int(pl.round_(real_N))
+    n_min = int(pl.round_(n_min))
+    if not give_up:
+        return constrained_parent_graph(real_N, n_min, nb, max_set, k_min)
+    else:
+        return "Can't do it"
+ 
+
+def constrained_parent_graph(N, n_min, nb, max_set, k_min = 2):
+    G = nx.Graph()
+    G.add_nodes_from(pl.arange(N))
+    parent_indices = pl.arange(len(max_set))
+    child_indices = pl.arange(n_min) + len(max_set)
+    child_stubs = pl.full(n_min, k_min)
+    ball_indices = pl.arange(nb) + n_min + len(max_set)
+
+    parent_stubs = max_set
+    # connect the ball to the first parent
+    if nb > 0:
+        G.add_edge(0, ball_indices[0])
+        parent_stubs[0] -= 1
+
+    # connect all children to their parents
+    for i, child_index in enumerate(child_indices):
+        probs = parent_stubs/pl.sum(parent_stubs)
+        parent_nodes = pl.choice(parent_indices, k_min, p = probs,
+                                    replace = False)
+        for parent in parent_nodes:
+            G.add_edge(child_index, parent)
+            parent_stubs[parent] -= 1
+        child_stubs[i] -= 2
+
+    # attach the ball together
+    if nb > 0:
+        for i, ball_index in enumerate(ball_indices[:-1]):
+            for other_ball_index in ball_indices[i + 1:]:
+                G.add_edge(ball_index, other_ball_index)
+    return G
+            
+    
+        
+
+def parents_node_partition(N, avg_k, k_min, k_max):
+
+    # parent nodes and child nodes almost uniquely connected
+    n_max = int(N/(1 + k_max/k_min))
+    n_min = k_max*n_max/k_min
+    # bonus nodes to fill out n
+    n_b = N - n_max - n_min
+    k_b = (N*avg_k - 2*n_max*k_max)/n_b
+
+    while k_b > k_max:
+        n_max -= 1
+        n_min = k_max*n_max/k_min
+        # bonus nodes to fill out n
+        n_b = N - n_max - n_min
+        k_b = (N*avg_k - 2*n_max*k_max)/n_b
+
+
+    real_N = n_max + n_min + n_b
+    real_avg_k = (n_max*k_max + n_min*k_min + n_b*k_b)/N
+    print("Real N:", real_N, "and real <k>:", real_avg_k)
+    print("N bonus:", n_b, " and K bonus:", k_b)
+    print("N max:", n_max, " and K max:", k_max, "so E max:", n_max*k_max)
+    print("N min:", n_min, " and K min:", k_min, "so E min:", n_min*k_min)
+
+def min_max_pk(k_min, k_max, avg_k):
+    p_k_min = (avg_k - k_max)/(k_min - k_max)
+    p_k_max = 1 - p_k_min
+    degrees = pl.array([k_min, k_max])
+    pk = pl.array([p_k_min, p_k_max])
+    return degrees, pk
+
+"""
+def quadratic_formula(a,b,c):
+    plus = (-b + pl.sqrt(b**2 - 4*a*c))/2*a
+    minus = (-b - pl.sqrt(b**2 - 4*a*c))/2*a
+    return plus, minus
+
+def parents_node_partition(N, avg_k, k_min, k_max):
+    b = (1 + 2*k_min/(1 + k_min/k_max))
+    a = 1
+    c = N*(avg_k - 2*k_min/(1 + k_min/k_max))
+    nb_plus, nb_minus = quadratic_formula(a,b,c)
+    determinant = b**2 - 4*a*c
+    print("Determinant:", determinant)
+    print(nb_plus, nb_minus)
+"""
+
 
 def gaussian_parameter_change(param, width, limits):
     """
@@ -258,20 +437,6 @@ def get_scale_free(alpha, k_min, N, target_avg_deg, tolerance = 0.01,
     else:
         return pk, degrees
 
-def get_colours_from_cmap(values, cmap = 'viridis'):
-    """
-    Function for getting line / point colours from colormaps
-    Better colorschemes to show sequences.
-    e.g. when the legend is something like (a = 1, a = 2, a = 3, etc)
-    """
-
-    cm = mpl.cm.viridis(pl.linspace(0, 1, 100))
-    cm = mpl.colors.ListedColormap(cm)
-    c_norm = pl.Normalize(vmin=0, vmax=values[-1])
-    scalar_map = cmx.ScalarMappable(norm=c_norm, cmap = cm)
-    colours = [scalar_map.to_rgba(v) for v in values]
-
-    return colours
 
 def joint_matrix(dk):
     off_diagonal = pl.outer(dk, dk)
@@ -1234,52 +1399,6 @@ def build_network(pk, degrees, N, return_pkk = False,
     print("Couldn't sample Network properly")
     return 'hell', "bubcus"
 
-def run_network(G, input_dir, data_dir, params, param_names, 
-    measures = ["DeathAge"]):
-    """
-    Shove the network to the GNM to get whatever measure (e.g. deathages) back
-    """
-
-    N = str(G.number_of_nodes())
-    # update the number of nodes (it could change by a bit)
-    params[1] = N
-    initial_distribution = params[-4]
-    #print(params)
-    network_travel_start = time.time()
-    output_network(G, input_dir + "SimplyConnected.csv")
-    print("Outputting to " + input_dir + "SimplyConnected.csv")
-
-    network_travel_time = time.time() - network_travel_start
-    ### running stuff
-    # compile if needed
-    sub.call(["make", "testNetwork"])
-    command = ['./testNetwork'] + params 
-    raw_start_time = time.time()
-    sub.call(command)
-    raw_simulation_time = time.time()  - raw_start_time
-    print("Real Simulation Time: {0:.3f}, Network Travel() time: {1:.3f}".format(
-        raw_simulation_time, network_travel_time))
-
-    print("Reading data from " + data_dir)
-
-    output_files = os.listdir(data_dir)
-    print(output_files)
-
-    performances = []
-    for m in measures:
-        performance_file = [data_dir + f for f in output_files if m in f][0]
-        performance = pl.loadtxt(performance_file)
-        if "Norm" not in m:
-            performance /= scale
-        performances.append(performance)
-
-    for f in output_files:
-        os.remove(data_dir + f)
-
-    if len(performance) == 1:
-        return performances[0]
-    else:
-        return performances
 
 def calculate_entropy(p):
     valid_p = p[p > 0]
@@ -1366,7 +1485,6 @@ def consolidate_components(connected_components, degree_sequence, G):
             return G
         else:
             return "Blew it again man"
-
 
 def network_from_jkk(jkk, degrees, N, return_pkk = False):
     jkk_dict = connection_dict(jkk, degrees.astype(int))
@@ -1526,8 +1644,6 @@ def swap_edges(e0, e1, k0, k1):
     difference = r - best_r
     return best_edges, best_degrees, difference
 
-
-
 def shuffle_edges(G, swaps_per_edge = 1):
     edge_list = [e for e in G.edges]
     num_edges = len(edge_list)
@@ -1553,6 +1669,8 @@ def shuffle_edges(G, swaps_per_edge = 1):
     return edge_list, pl.asarray(r_differences)
      
 
+
+
 if __name__ == '__main__':
 
     pl.close('all')
@@ -1567,7 +1685,7 @@ if __name__ == '__main__':
     avg_k = 4
     scale = 0.00183
     ## parameters of running the simulaton
-    number = "1000"
+    number = "2000"
     output_folder = 'SimplyConnectedData/'
 
     seed  = '1'
@@ -2741,7 +2859,7 @@ if __name__ == '__main__':
             pl.colorbar()
             pl.savefig(plots_folder + simulation_details + "FinalPkk.pdf")
 
-    scale_free_assortativity_check = 1
+    scale_free_assortativity_check = 0
     if scale_free_assortativity_check:
         pA = 0.0
         N = 1000
@@ -2843,7 +2961,204 @@ if __name__ == '__main__':
             show_log_jkk(degrees, dk, degree_sequence, new_Garrett_G,
                 "Garrett's Rewired in Post")
 
-        
+    check_death_balls = 0
+    if check_death_balls:
+        N = 100
+        degrees = pl.array([2, 20])
+        dk = pl.array([90, 9])
+        pa = 1.0
+        pd = 0.0
+        pr = 0.0
+        G, jkk = build_weighted_graph(degrees, dk, pa, pd, pr, True)
+        pos = nx.spring_layout(G)
+        nx.draw(G, pos, node_size = 8, edge_color = 'C7')
+        print("r:", nx.degree_assortativity_coefficient(G))
+        pl.figure()
+        pl.imshow(pkk, origin = "lower")
 
+
+    draw_parents = 0
+    if draw_parents:
+        N = 100
+        k_min = 2
+        k_max = 49
+        k_maxes = [5, 40, 60, 100]
+        avg_k = 4
+
+        fig, ax = pl.subplots(2,2, figsize=(12,8))
+        
+        for i, k_max in enumerate(k_maxes):
+            p = ax[int(i>1),i%2]
+            p.set_title("k max = " + str(k_max))
+            not_built = 1
+            max_tries = 5
+            num_tries = 0
+            while not_built:
+                num_tries += 1
+                try:
+                    G = hacky_partition(N, avg_k, k_min, k_max)
+                    if type(G) != str:
+                        not_built = 0
+                    else:
+                        not_built = 1
+                except ValueError:
+                    not_built = 1
+                    print("Damn")
+                if num_tries > max_tries:
+                    break
+            draw_spring_graph(G, p)
+        pl.savefig("Plots/ParentsExampleNetworks.pdf")
+ 
+    parent_check = 0
+    if parent_check:
+        plots_dir = "Plots/"
+        N = 100
+        k_min = 2
+        k_max = 49
+        avg_k = 4
+        
+        pa = 0.0
+        pd = 1.0
+        pr = 0.0
+
+        running_folder = "GeneratedNetworks/"
+        params[4] = running_folder
+        params[3] = str(avg_k)
+
+        Ns = [100, 250, 500, 1000, 2500, 5000, 10000]
+        colours = get_colours_from_cmap(pl.arange(len(Ns)))
+        k_max_fractions = [0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9,
+                                1.0]
+
+        N_avg_degs = []
+        N_means = []
+        N_errors = []
+        N_rs = []
+        N_k_maxes = []
+
+        for i, N in enumerate(Ns):
+
+            good_k_maxes = []
+            avg_degs = []
+            means= []
+            errors = []
+            measure_names= ["DeathAge", "HealthyAging", "QALY"]
+            rs = []
+            k_maxes = [int(f*N) for f in k_max_fractions]
+
+            for k_max in k_maxes:
+                print("\n Going for ", k_max, "- N should be", N)
+                not_built = 1
+                max_tries = 5
+                num_tries = 0
+                while not_built:
+                    num_tries += 1
+                    try:
+                        G = hacky_partition(N, avg_k, k_min, k_max)
+                        if type(G) != str:
+                            not_built = 0
+                        else:
+                            not_built = 1
+                    except ValueError:
+                        not_built = 1
+                        print("Damn")
+                    if num_tries > max_tries:
+                        break
+                if not_built:
+                    continue
+                good_k_maxes.append(k_max)
+                #draw_spring_graph(G)
+                pl.title("K Max:" + str(k_max))
+                rs.append(nx.degree_assortativity_coefficient(G))
+
+                degree_sequence = [G.degree(node) for node in G.nodes()]
+                avg_deg = pl.average(degree_sequence)
+                avg_degs.append(avg_deg)
+                params[1] = str(len(degree_sequence))
+                params[3] = str(avg_deg)
+
+                m, e = run_network(G, running_folder,
+                                    params, param_names, measure_names)
+                means.append(m)
+                errors.append(e)
+
+            N_avg_degs.append(avg_degs)
+            N_rs.append(rs)
+            N_means.append(means)
+            N_errors.append(errors)
+            N_k_maxes.append(good_k_maxes)
+
+
+        pl.figure(figsize = (8,6))
+        for i, N in enumerate(Ns):
+            k_maxes = N_k_maxes[i]
+            k_fracs = [k/N for k in k_maxes]
+            rs = N_rs[i]
+            pl.plot(k_fracs, rs, label = "N={}".format(N), c = colours[i])
+        pl.xlabel("k max as a fraction of N")
+        pl.legend()
+        pl.ylabel("r")
+        pl.savefig(plots_dir+"ParentsAssortativity.pdf")
+
+        fig, ax = pl.subplots(1, 3, figsize=(12,6))
+        for i, N in enumerate(Ns):
+            k_maxes = N_k_maxes[i]
+            k_fracs = [k/N for k in k_maxes]
+
+            means = pl.asarray(N_means[i])
+            errors = pl.asarray(N_errors[i])
+            for j in range(3):
+                
+                ax[j].errorbar(k_fracs, means[:,j], yerr = errors[:,j],
+                            fmt = "o", color = colours[i], capsize = 3,
+                            label = "N={}".format(N))
+            
+                ax[j].set_xlabel("k max as a fraction of N")
+                ax[j].set_ylabel(measure_names[j])
+
+                ax[j].legend()
+        pl.savefig(plots_dir+"ParentsHealthPerformance.pdf")
+
+        pl.figure(figsize = (8,6))
+        for i, N in enumerate(Ns):
+            k_maxes = N_k_maxes[i]
+            k_fracs = [k/N for k in k_maxes]
+            avg_degs = N_avg_degs[i]
+            pl.plot(k_fracs, avg_degs, label = "N={}".format(N),
+                    c = colours[i])
+        pl.xlabel("k max as a fraction of N")
+        pl.legend()
+        pl.ylabel("<k>")
+
+    k_selector = 1
+    if k_selector:
+        degrees = [2,3,4,5,6,7,8]
+        k_start = degrees[-1]
+        n_max = 9
+        N = 2**n_max + 2
+        k_max = N - 2
+
+        n_bins = 10
+        n = n_bins - len(degrees)
+
+        n_samp = 10000
+        bins = pl.logspace(0, n_max, n_max + 1, base = 2)
+        x = bins[:-1]
+        data = []
+        theory = []
+        for i in range(n_samp):
+            degrees = [2,3,4,5,6,7,8]
+            theory_degrees = degrees + list(log_uniform(k_start, k_max, n))
+            theory.append(pl.histogram(theory_degrees, bins)[0])
+            degrees += (log_sampler(k_max, n, k_start))
+            degrees = pl.asarray(degrees)
+            data.append(pl.histogram(degrees, bins)[0])
+        means = pl.average(data, axis = 0)
+        pl.plot(x, means, "o")
+
+        theory_means = pl.average(theory, axis = 0)
+        pl.plot(x, theory_means, "o")
+
+        pl.xscale('log')
 
     pl.show()

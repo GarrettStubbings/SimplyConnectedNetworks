@@ -28,6 +28,70 @@ mpl.rcParams['lines.linewidth'] = 1.5
 mpl.rcParams['lines.markeredgecolor'] = 'k'
 mpl.rcParams['lines.markeredgewidth'] = 0.5
 
+def log_sampler(k_max, n, k_start):
+    ks = pl.arange(k_start, k_max)+1
+    ps = 1/(ks) #np.power(2, -(ks)/k_max)
+    probs = ps/pl.sum(ps)
+    ks = pl.choice(ks, n, p = probs, replace = False)
+    ks = sorted(list(ks))
+    return ks
+
+def get_colours_from_cmap(values, cmap = 'viridis'):
+    """
+    Function for getting line / point colours from colormaps
+    Better colorschemes to show sequences.
+    e.g. when the legend is something like (a = 1, a = 2, a = 3, etc)
+    """
+    x = pl.linspace(0, 1, 100)
+    cm = mpl.cm.get_cmap(cmap)(x)#[np.newaxis, :, :3]
+    cm = mpl.colors.ListedColormap(cm)
+    c_norm = pl.Normalize(vmin=pl.amin(values), vmax=pl.amax(values))
+    scalar_map = cmx.ScalarMappable(norm=c_norm, cmap = cm)
+    colours = [scalar_map.to_rgba(v) for v in values]
+
+    return colours
+
+def draw_spring_graph(G, axis = 'none'):
+    node_degrees = [G.degree(node) for node in G.nodes()]
+    unique_degrees = pl.array(list(set(node_degrees)))
+    colours = get_colours_from_cmap(unique_degrees, cmap="viridis_r")
+    degree_indices = [pl.where(unique_degrees == k)[0][0] for k in
+                        node_degrees]
+   
+    #print(degree_indices)
+    node_colours = [colours[i] for i in degree_indices]
+    node_sizes = pl.asarray(node_degrees)*2 + 5
+
+    edge_powers = [pl.sum([G.degree(node) for node in edge]) for edge in 
+                            G.edges()]
+    unique_powers = pl.array(list(set(edge_powers)))
+    #print(unique_powers)
+    #print(edge_powers)
+    colours = get_colours_from_cmap(unique_powers, cmap = "viridis_r")
+    edge_indices = [pl.where(unique_powers== p)[0][0] for p in edge_powers]
+    #print(edge_indices)
+    edge_colours = [colours[i] for i in edge_indices]
+    #print(colours)
+ 
+    pos = nx.spring_layout(G)
+    if axis == "none":
+        pl.figure(figsize=(8,6))
+        nx.draw(G, pos, node_size = node_sizes, edge_color = edge_colours,
+                    node_color = node_colours, edgecolors = "k", edgewidths=0.1)
+    else:
+        nx.draw(G, pos, node_size = node_sizes, edge_color = edge_colours,
+                    node_color = node_colours, edgecolors = "k",
+                    edgewidths=0.1, ax = axis)
+
+        
+
+def min_max_pk(k_min, k_max, avg_k):
+    p_k_min = (avg_k - k_max)/(k_min - k_max)
+    p_k_max = 1 - p_k_min
+    degrees = pl.array([k_min, k_max])
+    pk = pl.array([p_k_min, p_k_max])
+    return degrees, pk
+
 def cooling_schedule(iteration, t0, a):
     temperature = t0 / (1 +  a*pl.log(iteration))
     return temperature
@@ -47,7 +111,7 @@ def pad_data(data):
             pl.concatenate([d, pl.full(max_length-len(d), pl.nan)]))
     return padded_data
 
-def gaussian_parameter_change(param, width, limits):
+def fractional_parameter_change(param, width, limits):
     """
     Change the parameter proportionally using a fraction generated from a 
     gaussian. Disallow values outside of the limits.
@@ -58,6 +122,18 @@ def gaussian_parameter_change(param, width, limits):
         change = 1 - width*pl.normal()
     
     return param * change
+
+def absolute_parameter_change(param, width, limits):
+    """
+    Change the parameter proportionally using a fraction generated from a 
+    gaussian. Disallow values outside of the limits.
+    """
+    change = width*pl.normal()
+
+    while change + param < limits[0] or change + param > limits[1]:
+        change = width*pl.normal()
+    
+    return param + change
 
 def get_scale_free_degrees(N, temp_folder, alpha, avg_deg, seed):
     """
@@ -74,7 +150,9 @@ def get_scale_free_degrees(N, temp_folder, alpha, avg_deg, seed):
 
     output_files = os.listdir(temp_folder)
     #print(output_files)
-    degree_file = output_files[0]
+    #print(output_files)
+    degree_file = [f for f in output_files if "Degree" in f][0]
+    #print(degree_file)
     degree_sequence = pl.loadtxt(temp_folder + degree_file)[:,1]
 
     for f in output_files:
@@ -90,21 +168,6 @@ def get_scale_free_degrees(N, temp_folder, alpha, avg_deg, seed):
     dk = dk[dk != 0]
 
     return degrees, dk, degree_sequence
-
-def get_colours_from_cmap(values, cmap = 'viridis'):
-    """
-    Function for getting line / point colours from colormaps
-    Better colorschemes to show sequences.
-    e.g. when the legend is something like (a = 1, a = 2, a = 3, etc)
-    """
-
-    cm = mpl.cm.viridis(pl.linspace(0, 1, 100))
-    cm = mpl.colors.ListedColormap(cm)
-    c_norm = pl.Normalize(vmin=0, vmax=values[-1])
-    scalar_map = cmx.ScalarMappable(norm=c_norm, cmap = cm)
-    colours = [scalar_map.to_rgba(v) for v in values]
-
-    return colours
 
 def joint_matrix(dk):
     off_diagonal = pl.outer(dk, dk)
@@ -518,9 +581,9 @@ def sampled_edge_assignment(k_index, degrees, degree_counts, stubs,
         else:
             edge_weights = pl.copy(available_stubs)
             edge_weights[k_index] /= 2.0
-            probabilities = edge_weights/pl.sum(edge_weights)
 
             try:
+                probabilities = edge_weights/pl.sum(edge_weights)
                 k_prime_index = pl.choice(size, p = probabilities)
             except ValueError:
                 #print("\n Probabilities Contain NaN\n")
@@ -1326,6 +1389,8 @@ if __name__ == '__main__':
     N = int(sys.argv[6])
     number = sys.argv[7]
     health_measure = sys.argv[8]
+    entropy_target = float(sys.argv[9])
+
     seed = int(sys.argv[-2])
     entropy_weighting = float(sys.argv[-1])
 
@@ -1336,17 +1401,17 @@ if __name__ == '__main__':
 
     print(method)
     if method == "NonParametric":
-        k_min = int(sys.argv[9])
-        k_max = int(sys.argv[10])
-        details += "kMin{0}/kMax{1}/".format(k_min, k_max)
-        print("k_min: {0}, k_max: {1}".format(k_min, k_max))
+        n_bins = int(sys.argv[10])
+        details += "/NBins{}/".format(n_bins)
     
     print("RUN PARAMS: Method: {4}, Lambda:{0}, Run Time: {1}, N: {2},"\
             " number: {3}, Health Measure: {6}, seed: {5}".format(
             entropy_weighting, run_time, N, number, method, seed,
             health_measure))
 
-    details += "Lambda"+ str(entropy_weighting) + "/" + "Seed" + str(seed) + "/"
+    details += ("Lambda"+ str(entropy_weighting) + "/" +
+                "EntropyTarget" + str(entropy_target) + "/"
+                "Seed" + str(seed) + "/")
     output_folder = output_folder + details
     running_folder = temp_folder + details
 
@@ -1377,6 +1442,7 @@ if __name__ == '__main__':
     original_N = N
 
     if method == "NonParametric":
+        """
         dk = [0,0,1,4,1,0]
         degrees = [i+1 for i in range(len(dk))]
         bonus_degrees = [i+1 for i in range(len(dk), k_max)]
@@ -1387,23 +1453,43 @@ if __name__ == '__main__':
         dk = dk[degrees >= k_min]
         degrees = degrees[degrees >= k_min]
         pk = pl.asarray(dk)/pl.sum(dk)
+        """
+        avg_deg = 4.0
+
+        degrees = [2,3,4,5,6,7,8] #pl.arange(k_max + 1)
+        k_min = pl.amin(degrees)
+        k_max = N - k_min
+        k_start = pl.amax(degrees)
+        print(k_max, n_bins, k_start, degrees)
+        n = n_bins - len(degrees)
+        bonus_degrees = log_sampler(k_max, n, k_start)
+        print(bonus_degrees)
+        degrees += bonus_degrees
+        degrees = pl.asarray(degrees)
+        pk = pl.zeros(len(degrees))
+        pk[:5] = 1/5
+        print(pk)
 
         avg_k = pl.dot(degrees, pk)
         best_pk = pl.copy(pk)
 
+
     static_assortativity = False
-    if static_assortativity:
-        p_assortative = 0.0
-        p_dissassortative = 0.0
-        p_random = 1.0 - p_assortative - p_dissassortative
+    p_assortative = 0.33
+    p_dissassortative = 0.33
+    p_random = 1.0 - p_assortative - p_dissassortative
 
-
+    best_pa = p_assortative
+    best_pd = p_dissassortative
+    best_pr = p_random
+    p_weights_width = 0.1
     params[3] = "4" #str(avg_k)
     best_entropy = 0.01
     best_health_mean = 0.01
     health_mean = best_health_mean
     best_alpha = 2.27
     alpha = best_alpha
+    avg_k = 4
 
     measures = ["DeathAge", "HealthyAging", "QALY"]
     merit_index = pl.where(pl.asarray(measures) == health_measure)[0][0]
@@ -1420,6 +1506,7 @@ if __name__ == '__main__':
     best_degrees = []
     best_probs = []
     best_alphas = []
+    best_rs = []
     iterations = []
     best_G = 1
     best_pkk = 1
@@ -1434,6 +1521,7 @@ if __name__ == '__main__':
         limits = [2.0, 5.0]
         degrees, dk, degree_sequence = get_scale_free_degrees(
                                     N, running_folder, alpha, avg_deg, seed)
+        print(pl.dot(degrees, dk)/N, " is the average degree")
         k_min = 2
         k_max = "UNDEF"
 
@@ -1447,7 +1535,7 @@ if __name__ == '__main__':
         1-entropy_weighting)*best_health_mean
 
     fraction = 0.1 #polarized changes away from 0.5 (best way to make progress)
-    max_changes = 100
+    max_changes = 5
 
     start_time = time.time()
     elapsed_time = (time.time() - start_time)/60 # in minutes
@@ -1472,7 +1560,7 @@ if __name__ == '__main__':
 
         # Using variational method (still only scale-free here)
         if "aria" in method:
-            alpha = gaussian_parameter_change(alpha, width, limits)
+            alpha = fractional_parameter_change(alpha, width, limits)
             degrees, dk, degree_sequence = get_scale_free_degrees(
                                     N, running_folder, alpha, avg_deg, seed)
         # Using non-parametric method
@@ -1500,9 +1588,15 @@ if __name__ == '__main__':
         ###########  Building the Network $$$$%%%%%%%%%%%%
         build_start = time.time()
         if not static_assortativity:
-            p_assortative = pl.random()
-            p_dissassortative = pl.random()*(1-p_assortative)
-            p_random = 1.0 - p_assortative - p_dissassortative
+            #probs = pl.random(size = 3)
+            p_assortative = absolute_parameter_change(best_pa,
+                                p_weights_width, [0,1])
+            p_dissassortative = absolute_parameter_change(best_pd,
+                                p_weights_width, [0,1])
+            p_random = absolute_parameter_change(best_pr,
+                                p_weights_width, [0,1])
+            probs = pl.array([p_assortative, p_dissassortative, p_random])
+            p_assortative, p_dissassortative, p_random = probs/pl.sum(probs)
 
         G, jkk = build_weighted_graph(degrees, dk,
             p_assortative, p_dissassortative, p_random, True)
@@ -1526,7 +1620,7 @@ if __name__ == '__main__':
             simulation_time = time.time() - simulation_start
             health_mean = health_means[merit_index] 
 
-        merit = entropy_weighting*entropy + (
+        merit = 1 - entropy_weighting*pl.absolute(entropy - entropy_target) + (
                                 1-entropy_weighting)*health_mean
 
         ########### Merit Function Evaluation and Update #####################
@@ -1534,6 +1628,9 @@ if __name__ == '__main__':
         if check_performance(merit, best_merit, temperature):
             best_probs.append([p_assortative, p_dissassortative,
                                                 p_random])
+            best_pa = p_assortative
+            best_pd = p_dissassortative
+            best_pr = p_random
             if method == "NonParametric":
                 best_pk = pl.copy(pk)
                 best_pks.append(pl.copy(pk))
@@ -1549,6 +1646,8 @@ if __name__ == '__main__':
             best_alpha = alpha
             best_alphas.append(best_alpha)
             best_pkk = pkk
+            best_r = nx.degree_assortativity_coefficient(G)
+            best_rs.append(best_r)
             best_entropy = entropy
             best_pkk_entropies.append(entropy)
             best_merit = merit
@@ -1566,6 +1665,7 @@ if __name__ == '__main__':
         pl.savetxt(output_folder+"IterationNumbers.txt", iterations)
         pl.savetxt(output_folder+"BestAlphas.txt", best_alphas)
         pl.savetxt(output_folder+"BestProportions.txt", best_probs)
+        pl.savetxt(output_folder+"BestAssortativities.txt", best_rs)
 
         pl.savetxt(output_folder+"BestDks.txt", pad_data(best_sampled_dks))
         pl.savetxt(output_folder+"BestDegrees.txt", pad_data(best_degrees))
