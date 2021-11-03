@@ -10,7 +10,13 @@ import time
 import itertools as it
 import pylab as pl
 import string
-import networkx as nx
+import sys
+try:
+    import networkx as nx
+except (ImportError, ModuleNotFoundError):
+    print("\n\nFailure to import Networkx\nCURSED ENVIRONMENTS\n\n")
+    sys.exit(1)
+    
 import datetime
 date = datetime.date.today().strftime('%e%b%y')
 date = date.strip(' ')
@@ -19,7 +25,6 @@ import matplotlib as mpl
 import matplotlib.cm as cmx
 from scipy.optimize import curve_fit
 import numpy as np
-import sys
 
 from folder_management import *
 

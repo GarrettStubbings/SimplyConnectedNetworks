@@ -23,13 +23,13 @@ if __name__ == "__main__":
     output_folder = "./"
     output_file = output_folder + "table.dat"
     
-    Ns = [128]#, 2000, 5000, 10000]
+    Ns = [512, 1024, 2048]#, 5000, 10000]
     numbers = [5000]
     health_measures = ["DeathAge"]#, "QALY"]
     entropy_targets = [1.0, 2.0, 3.0, 4.0, 5.0]
-    n_bins = [15]
+    n_bins = [10]
     seeds = [1,2,3,4,5,6,7,8,9]
-    lambdas = [0.01, 0.1, 0.3, 0.5, 0.8, 0.9, 0.99]
+    lambdas = [0.5, 0.8, 0.9, 0.99]
 
 
 
