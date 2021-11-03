@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --time=11:59:00
-#SBATCH --mem-per-cpu=1000M
+#SBATCH --mem-per-cpu=2000M
 #SBATCH --account=def-arutenbe
 #SBATCH --mail-user=garrett.stubbings@dal.ca
 #SBATCH --mail-type=ALL
