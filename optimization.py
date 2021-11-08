@@ -575,10 +575,15 @@ def sampled_edge_assignment(k_index, degrees, degree_counts, stubs,
                 dissassortative_index = k_prime_index
              
             # if we've run out of stubs there, find the next best target
+            if k_prime_index >= size:
+                break
+             
             while available_stubs[k_prime_index] == 0:
                 k_prime_index += 1
+                   
                 dissassortative_index = k_prime_index
                 if dissassortative_index == size:
+
                     k_prime_index = 0
                     dissassortative_index = k_prime_index
 
@@ -622,8 +627,8 @@ def sampled_edge_assignment(k_index, degrees, degree_counts, stubs,
         if k_index == k_prime_index:
             available_stubs[k_index] -= 1
         assigned_stubs[k_prime_index] += 1
-    if k_prime_index == size:
-        print(k_index, available_stubs, assigned_stubs)
+    #if k_prime_index == size:
+    #    print(k_index, available_stubs, assigned_stubs)
     
     return assigned_stubs, stubs
 
@@ -1447,6 +1452,7 @@ if __name__ == '__main__':
     original_N = N
 
     if method == "NonParametric":
+        # oldest method: linear degrees
         """
         dk = [0,0,1,4,1,0]
         degrees = [i+1 for i in range(len(dk))]
@@ -1464,10 +1470,21 @@ if __name__ == '__main__':
         degrees = [2,3,4,5,6,7,8] #pl.arange(k_max + 1)
         k_min = pl.amin(degrees)
         k_max = N - k_min
-        k_start = pl.amax(degrees)
-        print(k_max, n_bins, k_start, degrees)
+        k_start = pl.amax(degrees) + 1
         n = n_bins - len(degrees)
+        # second oldest method: random sampling (log uniform)
+        """
         bonus_degrees = log_sampler(k_max, n, k_start)
+        """
+
+        # current method (logspace)
+        log_max = pl.log2(k_max)
+        log_min = pl.log2(k_start)
+        bonus_degrees = list(pl.round_(
+                                pl.logspace(log_min, log_max, n, base=2)
+                                                    ).astype(int))
+
+        print(k_max, n_bins, k_start, degrees)
         print(bonus_degrees)
         degrees += bonus_degrees
         degrees = pl.asarray(degrees)
@@ -1602,12 +1619,16 @@ if __name__ == '__main__':
                                 p_weights_width, [0,1])
             probs = pl.array([p_assortative, p_dissassortative, p_random])
             p_assortative, p_dissassortative, p_random = probs/pl.sum(probs)
-
+        #try:
         G, jkk = build_weighted_graph(degrees, dk,
             p_assortative, p_dissassortative, p_random, True)
         build_time = time.time() - build_start
         if type(G) == str:
             continue
+        #except IndexError:
+        #    print("Degrees (length({}))".format(len(degrees)), degrees)
+        #    print("P(k) (length({}):)".format(len(pk)), pk)
+        #    continue
         pkk = jkk/pl.sum(jkk)
         entropy = calculate_entropy(pkk)
 
