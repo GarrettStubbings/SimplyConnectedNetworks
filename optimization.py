@@ -1467,7 +1467,7 @@ if __name__ == '__main__':
         """
         avg_deg = 4.0
 
-        degrees = [2,3,4,5,6,7,8] #pl.arange(k_max + 1)
+        degrees = [1,2,3,4,5,6] #pl.arange(k_max + 1)
         k_min = pl.amin(degrees)
         k_max = N - k_min
         k_start = pl.amax(degrees) + 1
@@ -1489,7 +1489,7 @@ if __name__ == '__main__':
         degrees += bonus_degrees
         degrees = pl.asarray(degrees)
         pk = pl.zeros(len(degrees))
-        pk[:5] = 1/5
+        pk[1:6] = 1/5
         print(pk)
 
         avg_k = pl.dot(degrees, pk)
