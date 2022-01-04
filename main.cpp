@@ -64,7 +64,7 @@ int main(int argc, char *argv[]) {
         //std::cout << "Node " << i << " has degree " << n.k <<
         //    " and neighbours: ";
         for (int j: n.Neighbours){
-            std::cout << j << ", ";
+            //std::cout << j << ", ";
             edge = {i, j};
             reverseEdge = {j,i};
             alreadyThere = false;
@@ -79,7 +79,7 @@ int main(int argc, char *argv[]) {
                 edgeList.emplace_back(edge);
             }
         }
-        std::cout << "\n";
+        //std::cout << "\n";
     }
     OutputInts2d(edgeList, OriginalN, "EdgeList.txt");
 

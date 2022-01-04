@@ -56,6 +56,16 @@ std::vector<std::vector<double>> normalizeLogMatrix(
 
 }// end log matrix normalization
 
+void extendFIs(std::vector<std::vector<double>> &vec, int desiredSize){
+    for (auto &row: vec){
+        int size = row.size();
+        int sizeDifference = desiredSize-size;
+        for (int i = 0; i < sizeDifference; i++){
+            row.emplace_back(std::nan(""));
+        }
+    }// extend existing rows
+}
+
 void padVector(std::vector<std::vector<double>> &vec, int desiredSize){
     int size = vec.size();
     int sizeDifference = desiredSize-size;
@@ -63,6 +73,7 @@ void padVector(std::vector<std::vector<double>> &vec, int desiredSize){
         for (int i = 0; i < sizeDifference; i++){
             row.emplace_back(0.0);
         }
+        std::cout << "Added " << sizeDifference << " Zeros...\n";
     }// extend existing rows
 
     for (int i = 0; i < sizeDifference; i++){

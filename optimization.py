@@ -1126,7 +1126,7 @@ def build_network(pk, degrees, N, return_pkk = False,
     return 'hell', "bubcus"
 
 def run_network(G, running_folder, params, param_names, 
-    measures = ["DeathAge"]):
+    measures = ["DeathAge"], output = "means"):
     """
     Shove the network to the GNM to get whatever measure (e.g. deathages) back
     """
@@ -1175,12 +1175,16 @@ def run_network(G, running_folder, params, param_names,
         performance = pl.loadtxt(performance_file)
         if "eath" in m or "QALY" in m:
             performance /= scale
-        means.append(pl.average(performance))
-        errors.append(pl.std(performance)/pl.sqrt(len(performance) - 1))
+        if output == "array":
+            means.append(performance)
+            errors.append(pl.nan)
+        else:
+            means.append(pl.average(performance))
+            errors.append(pl.std(performance)/pl.sqrt(len(performance) - 1))
 
     for f in output_files:
         os.remove(running_folder + f)
-
+    
     if len(performance) == 1:
         return means[0], errors[0]
     else:
@@ -1400,24 +1404,24 @@ if __name__ == '__main__':
     number = sys.argv[7]
     health_measure = sys.argv[8]
     entropy_target = float(sys.argv[9])
-
     seed = int(sys.argv[-2])
     entropy_weighting = float(sys.argv[-1])
 
-    details += "/{0}/N{1}/{2}/".format(method, N, health_measure)
-    print("Temp folder:", temp_folder, ", output folder:", output_folder)
-    print(details, method, run_time, N, number, health_measure, seed,
-            entropy_weighting)
-
-    print(method)
     if method == "NonParametric":
         n_bins = int(sys.argv[10])
         details += "/NBins{}/".format(n_bins)
-    
+        k_min = int(sys.argv[11])
+        k_max = float(sys.argv[12]) 
+        details += "/{0}/kMin{3}/kMax{4}/N{1}/{2}/".format(method, N,
+                    health_measure, k_min, k_max)
+        k_max = min([int(k_max * N), N - k_min])
+    else: 
+        details += "/{0}/N{1}/{2}/".format(method, N, health_measure)
     print("RUN PARAMS: Method: {4}, Lambda:{0}, Run Time: {1}, N: {2},"\
-            " number: {3}, Health Measure: {6}, seed: {5}".format(
+            " number: {3}, Health Measure: {6}, seed: {5}, "\
+            "Entropy target: {7}".format(
             entropy_weighting, run_time, N, number, method, seed,
-            health_measure))
+            health_measure, entropy_target))
 
     details += ("Lambda"+ str(entropy_weighting) + "/" +
                 "EntropyTarget" + str(entropy_target) + "/"
@@ -1467,11 +1471,8 @@ if __name__ == '__main__':
         """
         avg_deg = 4.0
 
-        degrees = [1,2,3,4,5,6] #pl.arange(k_max + 1)
-        k_min = pl.amin(degrees)
-        k_max = N - k_min
+        degrees = list(pl.arange(k_min, 6))#[1,2,3,4,5,6] #pl.arange(k_max + 1)
         k_start = pl.amax(degrees) + 1
-        n = n_bins - len(degrees)
         # second oldest method: random sampling (log uniform)
         """
         bonus_degrees = log_sampler(k_max, n, k_start)
@@ -1480,6 +1481,7 @@ if __name__ == '__main__':
         # current method (logspace)
         log_max = pl.log2(k_max)
         log_min = pl.log2(k_start)
+        n = n_bins - len(degrees)
         bonus_degrees = list(pl.round_(
                                 pl.logspace(log_min, log_max, n, base=2)
                                                     ).astype(int))
@@ -1489,7 +1491,10 @@ if __name__ == '__main__':
         degrees += bonus_degrees
         degrees = pl.asarray(degrees)
         pk = pl.zeros(len(degrees))
-        pk[1:6] = 1/5
+        pk[degrees == 3] = 0.25
+        pk[degrees == 4] = 0.5
+        pk[degrees == 5] = 0.25
+
         print(pk)
 
         avg_k = pl.dot(degrees, pk)
@@ -1587,10 +1592,10 @@ if __name__ == '__main__':
                                     N, running_folder, alpha, avg_deg, seed)
         # Using non-parametric method
         else:
-            if i % 2 == 1:
+            if i % 5 == 1:
                 num_changes -= 1
-            if num_changes < 1:
-                num_changes = 1#pl.randint(10) + 1
+            if num_changes < 5:
+                num_changes = 5#pl.randint(10) + 1
             pk = pl.copy(best_pk)
             successful_changes = 0
             fraction = pl.random()
@@ -1603,7 +1608,6 @@ if __name__ == '__main__':
                 #print(success, successful_changes)
                 if success:
                     successful_changes += 1
-           
             dk = random_hub_node_degrees(pk, degrees, N)[1]
             dk = pl.asarray(dk)
 
@@ -1646,7 +1650,7 @@ if __name__ == '__main__':
             simulation_time = time.time() - simulation_start
             health_mean = health_means[merit_index] 
 
-        merit = 1 - entropy_weighting*pl.absolute(entropy - entropy_target) + (
+        merit = 100 - entropy_weighting*pl.absolute(entropy - entropy_target) + (
                                 1-entropy_weighting)*health_mean
 
         ########### Merit Function Evaluation and Update #####################

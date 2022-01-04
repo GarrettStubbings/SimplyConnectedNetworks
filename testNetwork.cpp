@@ -97,6 +97,7 @@ int main(int argc, char *argv[]) {
     std::vector<std::vector<double>> populationFIs;
 
     double timeScale = 0.00183;
+    int oldest = 1;
 
     std::vector<DeficitVal> DeficitsValues;
 
@@ -139,7 +140,8 @@ int main(int argc, char *argv[]) {
             UpdateLocalFrailty(Network, Network[Index]);
             
             // record the frailty index yearly
-            if (year < int(Time/timeScale)){
+            int yearsPassed = int(Time/timeScale) - year;
+            for (int gapYear = 0; gapYear <= yearsPassed; gapYear++){
                 FIVector.emplace_back(FI);
                 year++;
             }
@@ -178,6 +180,9 @@ int main(int argc, char *argv[]) {
         DeathAges.emplace_back(Time);
         // Record FI History
         populationFIs.emplace_back(FIVector);
+        if (year > oldest){
+            oldest = year;
+        }
         
         //Reset Rates and fraility if it is single topology
         
@@ -196,7 +201,9 @@ int main(int argc, char *argv[]) {
     OutputMeans(DeathAges, OriginalN,"DeathAges");
     OutputMeans(healthyAgingVector, OriginalN, "QALY");
     OutputMeans(HANormVector, OriginalN, "HealthyAging");
-    //Output2d(populationFIs, OriginalN, "PopulationFI");
+    std::cout << "Oldest: " << oldest << "\n";
+    extendFIs(populationFIs, oldest + 1);
+    Output2d(populationFIs, OriginalN, "PopulationFI");
     //std::cout << "Average Death Age: " << mean(DeathAges) << "\n";
     //std::cout << "Average Healthy Aging: " << mean(healthyAgingVector) << "\n";
     //std::cout << "Average Normalized Healthy Aging: " << mean(
