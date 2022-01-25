@@ -65,6 +65,8 @@ def draw_spring_graph(G, axis = 'none'):
    
     #print(degree_indices)
     node_colours = [colours[i] for i in degree_indices]
+    if len(node_colours) == 1:
+        node_colours = ['C0']
     node_sizes = pl.asarray(node_degrees)*2 + 5
 
     edge_powers = [pl.sum([G.degree(node) for node in edge]) for edge in 
@@ -73,6 +75,8 @@ def draw_spring_graph(G, axis = 'none'):
     #print(unique_powers)
     #print(edge_powers)
     colours = get_colours_from_cmap(unique_powers, cmap = "viridis_r")
+    if len(colours) == 1:
+        colours = ["C7"]
     edge_indices = [pl.where(unique_powers== p)[0][0] for p in edge_powers]
     #print(edge_indices)
     edge_colours = [colours[i] for i in edge_indices]
@@ -859,7 +863,8 @@ def random_hub_node_degrees(degree_distribution, degrees, N):
         degree_sum = pl.sum(degree_sequence)
     return pl.asarray(degree_sequence), pl.asarray(degree_counts)
 
-def check_graphical(degree_sequence):
+def check_graphical(degree_sequence, check_avg_k = False, target_avg_k = 4.0,
+                    avg_k_tolerance = 0.05):
     N = len(degree_sequence)
     min_constraint = pl.amin(pl.column_stack([degree_sequence, pl.arange(N)]),
                             axis = 1)
@@ -868,6 +873,13 @@ def check_graphical(degree_sequence):
         rhs = k*(k-1) + pl.sum(min_constraint[k:])
         if lhs > rhs:
             return False
+    if check_avg_k:
+        calc_avg_k = pl.average(degree_sequence)
+        if abs(target_avg_k - calc_avg_k)/target_avg_k < avg_k_tolerance:
+            return True
+        else:
+            return False
+        
     return True
 
 def change_pk(original_pk, degrees, n1, n2, frac, avg_deg):
@@ -1517,6 +1529,9 @@ if __name__ == '__main__':
     best_alpha = 2.27
     alpha = best_alpha
     avg_k = 4
+    target_avg_k = avg_k
+    avg_k_tolerance = 0.05
+    check_avg_k = True
 
     measures = ["DeathAge", "HealthyAging", "QALY"]
     merit_index = pl.where(pl.asarray(measures) == health_measure)[0][0]
@@ -1608,8 +1623,19 @@ if __name__ == '__main__':
                 #print(success, successful_changes)
                 if success:
                     successful_changes += 1
-            dk = random_hub_node_degrees(pk, degrees, N)[1]
+            new_sequence_graphical = False
+            max_sequence_attempts = 10
+            sequence_attempts = 0
+            while sequence_attempts < max_sequence_attempts and (
+                    not new_sequence_graphical):
+                deg_seq, dk = random_hub_node_degrees(pk, degrees, N)
+                new_sequence_graphical = check_graphical(deg_seq, check_avg_k,
+                                    target_avg_k, avg_k_tolerance)
+            if not new_sequence_graphical:
+                continue
             dk = pl.asarray(dk)
+            calc_avg_deg = pl.average(deg_seq)
+            #print("Sampled Average Degree:", calc_avg_deg)
 
         ###########  Building the Network $$$$%%%%%%%%%%%%
         build_start = time.time()
@@ -1637,7 +1663,7 @@ if __name__ == '__main__':
         entropy = calculate_entropy(pkk)
 
         sampled_N = G.number_of_nodes()
-        if sampled_N < 0.95*original_N:
+        if sampled_N < 0.95*original_N or sampled_N > 1.05*original_N:
             continue
         params[1] = str(sampled_N)
 
