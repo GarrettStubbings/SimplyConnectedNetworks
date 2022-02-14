@@ -107,8 +107,9 @@ def cooling_schedule(iteration, t0, a):
 
 def check_performance(merit, best_merit, temperature):
     r = pl.random()
-    performance = (merit - best_merit)/best_merit
+    performance = (merit - best_merit)
     pass_fail = pl.exp(performance/temperature) > r
+    print("Is it Better?", pass_fail)
    
     return pass_fail
 
@@ -131,6 +132,13 @@ def fractional_parameter_change(param, width, limits):
         change = 1 - width*pl.normal()
     
     return param * change
+
+def change_alpha(alpha, lower):
+    """
+    change alpha randomly on a logscale (greater than 2)
+    """
+    f = -pl.log(pl.random())
+    return f * alpha + (1-f)*lower
 
 def absolute_parameter_change(param, width, limits):
     """
@@ -1523,10 +1531,10 @@ if __name__ == '__main__':
     best_pr = p_random
     p_weights_width = 0.1
     params[3] = "4" #str(avg_k)
-    best_entropy = 0.01
-    best_health_mean = 0.01
+    best_entropy = 3.0
+    best_health_mean = 60.0
     health_mean = best_health_mean
-    best_alpha = 2.27
+    best_alpha = 3.0
     alpha = best_alpha
     avg_k = 4
     target_avg_k = avg_k
@@ -1573,9 +1581,12 @@ if __name__ == '__main__':
         p_dissassortative = 0
         p_random = 1
 
-    best_merit = entropy_weighting*best_entropy + (
-        1-entropy_weighting)*best_health_mean
+    best_merit = -2.0
+        #1 - entropy_weighting*(pl.absolute(
+        #    entropy_target - best_entropy)) + (
+        #    1-entropy_weighting)*best_health_mean
 
+    #print("Initial Merit:", best_merit)
     fraction = 0.1 #polarized changes away from 0.5 (best way to make progress)
     max_changes = 5
 
@@ -1602,7 +1613,8 @@ if __name__ == '__main__':
 
         # Using variational method (still only scale-free here)
         if "aria" in method:
-            alpha = fractional_parameter_change(alpha, width, limits)
+            alpha = change_alpha(alpha, 2.0)
+            #fractional_parameter_change(alpha, width, limits)
             degrees, dk, degree_sequence = get_scale_free_degrees(
                                     N, running_folder, alpha, avg_deg, seed)
         # Using non-parametric method
@@ -1676,12 +1688,16 @@ if __name__ == '__main__':
             simulation_time = time.time() - simulation_start
             health_mean = health_means[merit_index] 
 
-        merit = 100 - entropy_weighting*pl.absolute(entropy - entropy_target) + (
+        merit = 1 - entropy_weighting*pl.absolute(entropy - entropy_target) + (
                                 1-entropy_weighting)*health_mean
+        print("Merit:", merit, "- Best merit:", best_merit)
+        print("Entropy {0:.3f}, Health Mean {1:.3f}".format(entropy,
+                                                health_mean))
 
         ########### Merit Function Evaluation and Update #####################
         temperature = cooling_schedule(i, t0, a)
-        if check_performance(merit, best_merit, temperature):
+
+        if check_performance(merit, best_merit, temperature) or i == 2:
             best_probs.append([p_assortative, p_dissassortative,
                                                 p_random])
             best_pa = p_assortative
