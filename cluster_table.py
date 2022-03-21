@@ -23,15 +23,16 @@ if __name__ == "__main__":
     output_folder = "./"
     output_file = output_folder + "table.dat"
     
-    Ns = [128, 512, 1024][:1]#, 10000]#, 5000, 10000]
-    numbers = [1000]
-    health_measures = ["DeathAge"]
-    entropy_targets = [1.0, 2.0, 2.5, 3.0, 3.5, 4.0, 5.0][:1]
-    n_bins = [10]
-    k_mins = [1,2]
-    k_maxes = [0.25, 0.5, 0.75, 1.0][:1]
-    seeds = [1,2,3][:1]
-    lambdas = [0.5, 0.85][:1]
+    Ns = [128]#128, 512, 1024, 2048, 10000]#[:1]#, 10000]#, 5000, 10000]
+    numbers = [10000]
+    health_measures = ["DeathAge", "QALY"]#, "HealthyAging"]
+    entropy_targets = [0.5, 1.0, 1.33, 1.67, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5,
+                        100.0]
+    n_bins = [15]
+    k_mins = [2]
+    k_maxes = [1.0]#[:1]
+    seeds = [1,2,3,4,5]#[:1]
+    lambdas = [0.5, 0.8, 0.85, 0.9, 0.95]#[:1]
 
 
 

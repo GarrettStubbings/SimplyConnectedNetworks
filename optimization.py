@@ -33,6 +33,22 @@ mpl.rcParams['lines.linewidth'] = 1.5
 mpl.rcParams['lines.markeredgecolor'] = 'k'
 mpl.rcParams['lines.markeredgewidth'] = 0.5
 
+
+def pkk_from_G(G):
+    degrees = [G.degree(n) for n in G.nodes()]
+    degrees = pl.asarray(degrees)
+    degree_ranks = pl.searchsorted(sorted(list(set(degrees))), degrees)
+    edges = [e for e in G.edges()]
+    num_degrees = len(set(degrees))
+    jkk = pl.zeros([num_degrees, num_degrees])
+    for i, e in enumerate(edges):
+        j, k = [degree_ranks[int(n)] for n in e]
+        jkk[j,k] += 1
+        jkk[k,j] += 1
+    pkk = jkk/pl.sum(jkk)
+    return pkk
+  
+
 def log_sampler(k_max, n, k_start):
     ks = pl.arange(k_start, k_max)+1
     ps = 1/(ks) #np.power(2, -(ks)/k_max)
@@ -92,7 +108,6 @@ def draw_spring_graph(G, axis = 'none'):
                     node_color = node_colours, edgecolors = "k",
                     edgewidths=0.1, ax = axis)
 
-        
 
 def min_max_pk(k_min, k_max, avg_k):
     p_k_min = (avg_k - k_max)/(k_min - k_max)
@@ -955,9 +970,8 @@ def change_pk(original_pk, degrees, n1, n2, frac, avg_deg):
         #print("Negative scale factor")
         return original_pk, change_success
 
-    # All possible failure cases have been successfully passed so we good to go
+    # possible failure cases have been successfully passed so we good to go
     change_success = True
-
     # set values and renormalize pk
     new_pk = scale_factor * pl.copy(original_pk)
     new_pk[n1] = new_p1
@@ -1184,7 +1198,8 @@ def run_network(G, running_folder, params, param_names,
     #print("Reading data from " + running_folder)
 
     output_files = os.listdir(running_folder)
-    #print(output_files)
+    if len(output_files) < 1:
+        print("Nothing outputted...")
 
     scale = 0.00183
     means = []
@@ -1511,13 +1526,20 @@ if __name__ == '__main__':
         degrees += bonus_degrees
         degrees = pl.asarray(degrees)
         pk = pl.zeros(len(degrees))
-        pk[degrees == 3] = 0.25
-        pk[degrees == 4] = 0.5
-        pk[degrees == 5] = 0.25
+        if degrees[0] == 2:
+            print("Doing the top-heavy mode")
+            pk[0] = degrees[-1]/int(N)
+            pk[-1] = 2/int(N)
+            
+        else:
+            pk[degrees == 3] = 0.25
+            pk[degrees == 4] = 0.5
+            pk[degrees == 5] = 0.25
 
         print(pk)
 
         avg_k = pl.dot(degrees, pk)
+        print("Average Degree:", avg_k)
         best_pk = pl.copy(pk)
 
 
@@ -1588,13 +1610,14 @@ if __name__ == '__main__':
 
     #print("Initial Merit:", best_merit)
     fraction = 0.1 #polarized changes away from 0.5 (best way to make progress)
-    max_changes = 5
+    min_changes = 1
+
 
     start_time = time.time()
     elapsed_time = (time.time() - start_time)/60 # in minutes
     measure_time = run_time / 10
     progress = 0
-    num_changes = max_changes
+    num_changes = 5 #max_changes
     i = 1
     fractions = []
     while elapsed_time < run_time: 
@@ -1619,10 +1642,9 @@ if __name__ == '__main__':
                                     N, running_folder, alpha, avg_deg, seed)
         # Using non-parametric method
         else:
-            if i % 5 == 1:
-                num_changes -= 1
-            if num_changes < 5:
-                num_changes = 5#pl.randint(10) + 1
+            if num_changes > min_changes:
+                if i % 2 == 1:
+                    num_changes -= 1
             pk = pl.copy(best_pk)
             successful_changes = 0
             fraction = pl.random()
@@ -1643,7 +1665,9 @@ if __name__ == '__main__':
                 deg_seq, dk = random_hub_node_degrees(pk, degrees, N)
                 new_sequence_graphical = check_graphical(deg_seq, check_avg_k,
                                     target_avg_k, avg_k_tolerance)
+                sequence_attempts += 1
             if not new_sequence_graphical:
+                print("Couldn't find graphical degree sequence")
                 continue
             dk = pl.asarray(dk)
             calc_avg_deg = pl.average(deg_seq)
