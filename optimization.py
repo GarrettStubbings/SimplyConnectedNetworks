@@ -102,12 +102,91 @@ def draw_spring_graph(G, axis = 'none'):
     if axis == "none":
         pl.figure(figsize=(8,6))
         nx.draw(G, pos, node_size = node_sizes, edge_color = edge_colours,
-                    node_color = node_colours, edgecolors = "k", edgewidths=0.1)
+                    node_color = node_colours, edgecolors = "k",
+                    edgewidths=0.01)
     else:
         nx.draw(G, pos, node_size = node_sizes, edge_color = edge_colours,
                     node_color = node_colours, edgecolors = "k",
-                    edgewidths=0.1, ax = axis)
+                    edgewidths=0.01, ax = axis)
 
+def optimal_node_partition(N, Nc, avg_k):
+    """ Calculates how many of each node you need for 'optimal' network of size
+    N when trying to protect Nc nodes"""
+
+    det = pl.sqrt(9 - 4 * (2*N + 1 - Nc - N*avg_k))
+
+    sign = 1
+
+    if det <= 3:
+        sign = -1
+    
+    Ns = 0.5 * (3 + sign * det)
+    Ns = int(Ns)
+
+    N1 = N - Nc - Ns
+    
+    #N += Nc - (N1 - 1)%Nc
+
+    return N, Nc, N1, Ns
+
+def optimal_network(N, Nc, avg_k, n_fi_nodes):
+    """Hypothetical optimal network of size N for protecting the Nc critical
+    function nodes."""
+    
+    N, Nc, N1, Ns = optimal_node_partition(N, Nc, avg_k)
+
+    # initialize Graph
+    G = nx.Graph()
+    for i in range(N):
+        G.add_node(i)
+    
+    # Critical Node Ids
+    critical = pl.arange(Nc) * (N1 + Nc - 1)/Nc + 1
+    critical = pl.round_(critical).astype(int)
+    critical[0] = 0
+    
+    # Peripheral node IDs
+    peripheral = pl.asarray([i for i in range(N - Ns) if i not in critical])
+    
+    # Sink Node IDs
+    sink = pl.arange(N - Ns, N)
+
+    # Connect Critical Nodes to Peripheral Nodes
+    for i, crit in enumerate(critical):
+        if i < Nc - 1:
+            G.add_edge(crit, critical[i+1])
+            connectees = peripheral[(peripheral > crit) & (
+                peripheral < critical[i + 1])]
+        else:
+            connectees = peripheral[(peripheral > crit) & (
+                peripheral < pl.inf)]
+ 
+        for connect_id in connectees:
+            G.add_edge(crit, connect_id)
+
+    # connect Sink Nodes to Critical Nodes
+    if len(sink) > 0:
+        G.add_edge(critical[-1], sink[0])
+
+    # Connect sink Nodes together
+    for i, ID in enumerate(sink):
+        for j, connect_ID in enumerate(sink[sink != ID]):
+            G.add_edge(ID, connect_ID)
+    
+    mort_nodes = []
+    # Make up some Mortality Node and FI Node stuff
+    if Nc > 1:
+        mort_nodes = [critical[0], critical[int(len(critical)/2)]]
+    else:
+        if len(sink) > 0:
+            mort_nodes = [critical[0], sink[0]]
+        
+    important_nodes = [i for i in list(critical) + list(sink) +
+        list(peripheral) if i not in mort_nodes]
+    fi_nodes = []
+    fi_nodes = important_nodes[:n_fi_nodes]
+           
+    return G, mort_nodes, fi_nodes
 
 def min_max_pk(k_min, k_max, avg_k):
     p_k_min = (avg_k - k_max)/(k_min - k_max)
@@ -618,6 +697,9 @@ def sampled_edge_assignment(k_index, degrees, degree_counts, stubs,
         else:
             edge_weights = pl.copy(available_stubs)
             edge_weights[k_index] /= 2.0
+            if pl.sum(edge_weights) == 0:
+                continue
+                #break
 
             try:
                 probabilities = edge_weights/pl.sum(edge_weights)
@@ -1480,6 +1562,11 @@ if __name__ == '__main__':
     run_hours = "0.0"
     evo_condition = 'none'
     initial_distribution = "SimplyConnected"
+    p_assortative = 0.33
+    p_dissassortative = 0.33
+    p_random = 1.0 - p_assortative - p_dissassortative
+
+
 
     param_names = ['number', 'N', 'numChanges', 'avgDeg', 'folder',
         'singleseed', 'evoCondition', 'InitialDistribution',
@@ -1530,7 +1617,28 @@ if __name__ == '__main__':
             print("Doing the top-heavy mode")
             pk[0] = degrees[-1]/int(N)
             pk[-1] = 2/int(N)
-            
+        elif degrees[0] == 1:
+            Nc = 1
+            avg_k = 4.0
+            N_optimal, Nc, N1, Ns = optimal_node_partition(int(N), Nc, avg_k)
+            degrees = [1,2,3,4,5]
+            bonus_degrees = list(set(bonus_degrees + [Ns, Ns + 1]))
+            degrees = pl.asarray(degrees + bonus_degrees)
+            pk = pl.zeros(len(degrees))
+            pk[0] = N1/N_optimal
+            degrees[-1] = N1 + 1
+            pk[-1] = 1/N_optimal
+            pk[degrees == Ns] = (Ns-1)/N_optimal
+            pk[degrees == Ns + 1] = (1)/N_optimal
+            print(pl.sum(pk), pl.dot(pk, degrees))
+            p_assortative = 0.0
+            p_dissassortative = 1.0
+            p_random = 1.0 - p_assortative - p_dissassortative
+
+
+
+
+
         else:
             pk[degrees == 3] = 0.25
             pk[degrees == 4] = 0.5
@@ -1544,10 +1652,6 @@ if __name__ == '__main__':
 
 
     static_assortativity = False
-    p_assortative = 0.33
-    p_dissassortative = 0.33
-    p_random = 1.0 - p_assortative - p_dissassortative
-
     best_pa = p_assortative
     best_pd = p_dissassortative
     best_pr = p_random
