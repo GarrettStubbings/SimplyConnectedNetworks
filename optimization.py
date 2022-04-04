@@ -227,12 +227,16 @@ def fractional_parameter_change(param, width, limits):
     
     return param * change
 
-def change_alpha(alpha, lower):
+def change_alpha(alpha, lower, width, use_log = False):
     """
     change alpha randomly on a logscale (greater than 2)
     """
-    f = -pl.log(pl.random())
-    return f * alpha + (1-f)*lower
+    if alpha < lower + 0.1 or use_log:
+        f = -pl.log(pl.random())
+        return f * alpha + (1-f)*lower
+    else:
+        return absolute_parameter_change(alpha, width, [lower, 100]) 
+        
 
 def absolute_parameter_change(param, width, limits):
     """
@@ -1740,7 +1744,7 @@ if __name__ == '__main__':
 
         # Using variational method (still only scale-free here)
         if "aria" in method:
-            alpha = change_alpha(alpha, 2.0)
+            alpha = change_alpha(alpha, 2.0, width, use_log = i < 10)
             #fractional_parameter_change(alpha, width, limits)
             degrees, dk, degree_sequence = get_scale_free_degrees(
                                     N, running_folder, alpha, avg_deg, seed)
