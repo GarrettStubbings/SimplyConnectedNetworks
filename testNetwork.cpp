@@ -120,7 +120,7 @@ int main(int argc, char *argv[]) {
         FIVector.emplace_back(0);
         bool dead = false;
         
-        int year = 0;
+        int quarter = 0;
 
         int numEvents = 0;
 
@@ -139,11 +139,11 @@ int main(int argc, char *argv[]) {
              //update the local frailty after the node is modified
             UpdateLocalFrailty(Network, Network[Index]);
             
-            // record the frailty index yearly
-            int yearsPassed = int(Time/timeScale) - year;
-            for (int gapYear = 0; gapYear <= yearsPassed; gapYear++){
+            // record the frailty index quarterly (quarter-years)
+            int timePassed = int(4 * Time/timeScale) - quarter;
+            for (int k = 0; k <= timePassed; k++){
                 FIVector.emplace_back(FI);
-                year++;
+                quarter++;
             }
 
             //calculate new rates for the node and its neighbours
@@ -180,8 +180,8 @@ int main(int argc, char *argv[]) {
         DeathAges.emplace_back(Time);
         // Record FI History
         populationFIs.emplace_back(FIVector);
-        if (year > oldest){
-            oldest = year;
+        if (quarter > 4 * oldest){
+            oldest = int(quarter/4);
         }
         
         //Reset Rates and fraility if it is single topology
@@ -202,7 +202,7 @@ int main(int argc, char *argv[]) {
     OutputMeans(healthyAgingVector, OriginalN, "QALY");
     OutputMeans(HANormVector, OriginalN, "HealthyAging");
     std::cout << "Oldest: " << oldest << "\n";
-    extendFIs(populationFIs, oldest + 1);
+    extendFIs(populationFIs, 4 * oldest + 4);
     Output2d(populationFIs, OriginalN, "PopulationFI");
     //std::cout << "Average Death Age: " << mean(DeathAges) << "\n";
     //std::cout << "Average Healthy Aging: " << mean(healthyAgingVector) << "\n";

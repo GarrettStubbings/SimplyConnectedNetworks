@@ -22,7 +22,7 @@ from evo_plotting import *
 from visualization import *
 """
 from optimization import *
-from cluster_analysis import assortativity_extremes
+from cluster_analysis import *
 import networkx as nx
 import datetime
 date = datetime.date.today().strftime('%e%b%y')
@@ -49,8 +49,37 @@ def log_sampler(k_max, n, k_start):
     ks = sorted(list(ks))
     return ks
 
+def just_parents(N, k_min, k_max):
+    n_min = N
+    n_max = n_min*k_min/k_max
+    n_max = int(pl.round_(n_max))
+    n_min = n_max * k_max / k_min
+    n_min = int(pl.round_(n_min))
+    max_set = pl.full(n_max, k_max)
+    biggest_set = pl.copy(max_set)
+    N = n_min + n_max
+    print("N in reality:", N, "kmax/N =", k_max/N)
+
+    G = nx.Graph()
+    G.add_nodes_from(pl.arange(N))
+    parent_indices = pl.arange(len(max_set))
+    child_indices = pl.arange(n_min) + len(max_set)
+    child_stubs = pl.full(n_min, k_min)
+
+    parent_stubs = max_set
+    # connect all children to their parents
+    for i, child_index in enumerate(child_indices):
+        probs = parent_stubs/pl.sum(parent_stubs)
+        parent_nodes = pl.choice(parent_indices, k_min, p = probs,
+                                    replace = False)
+        for parent in parent_nodes:
+            G.add_edge(child_index, parent)
+            parent_stubs[parent] -= 1
+        child_stubs[i] -= 2
+    return G
 
 def hacky_partition(N, avg_k, k_min, k_max):
+
     n_min = N
     n_max = n_min*k_min/k_max
     n_max = int(pl.round_(n_max))
@@ -165,8 +194,6 @@ def constrained_parent_graph(N, n_min, nb, max_set, k_min = 2):
                 G.add_edge(ball_index, other_ball_index)
     return G
             
-    
-        
 
 def parents_node_partition(N, avg_k, k_min, k_max):
 
@@ -198,22 +225,6 @@ def min_max_pk(k_min, k_max, avg_k):
     degrees = pl.array([k_min, k_max])
     pk = pl.array([p_k_min, p_k_max])
     return degrees, pk
-
-"""
-def quadratic_formula(a,b,c):
-    plus = (-b + pl.sqrt(b**2 - 4*a*c))/2*a
-    minus = (-b - pl.sqrt(b**2 - 4*a*c))/2*a
-    return plus, minus
-
-def parents_node_partition(N, avg_k, k_min, k_max):
-    b = (1 + 2*k_min/(1 + k_min/k_max))
-    a = 1
-    c = N*(avg_k - 2*k_min/(1 + k_min/k_max))
-    nb_plus, nb_minus = quadratic_formula(a,b,c)
-    determinant = b**2 - 4*a*c
-    print("Determinant:", determinant)
-    print(nb_plus, nb_minus)
-"""
 
 
 def gaussian_parameter_change(param, width, limits):
@@ -306,50 +317,6 @@ def optimal_network(N, Nc, avg_k, n_fi_nodes):
     fi_nodes = important_nodes[:n_fi_nodes]
            
     return G, mort_nodes, fi_nodes
-
-def get_scale_free_degrees(N, temp_folder, alpha, avg_deg, seed, pA = 0.0,
-                    return_graph = True):
-    """
-    Use Spencer's code to get the degree sequence for scale free network of
-    given parameters
-    """
-    # params for generating network
-    params = ["0", "0.0", "0.0", "0.0", str(N), "2", str(alpha), str(avg_deg),
-                "AND", "Single", temp_folder, "ScaleFree", "0",
-                str(seed), str(pA)]
-    #sub.call(["make", "backup"])
-    command = ['./main'] + params 
-    sub.call(command)
-
-    output_files = os.listdir(temp_folder)
-    #print(output_files)
-    if not return_graph:
-        degree_file = output_files[0]
-    else:
-        degree_file = [f for f in output_files if "Edge" not in f][0]
-        edge_list_file = [f for f in output_files if "Edge" in f][0]
-    degree_sequence = pl.loadtxt(temp_folder + degree_file)[:,1]
-    if return_graph:
-        G = nx.read_edgelist(temp_folder + edge_list_file)
-
-    for f in output_files:
-        os.remove(temp_folder + f)
-
-    k_min = pl.amin(degree_sequence)
-    k_max = pl.amax(degree_sequence)
-
-    degree_bins = pl.arange(k_min, k_max + 2)
-    degrees = degree_bins[:-1]
-    dk = pl.histogram(degree_sequence, degree_bins)[0]
-    degrees = degrees[dk != 0]
-    dk = dk[dk != 0]
-
-    
-    if return_graph:
-        return degrees, dk, degree_sequence, G
-    else:
-        return degrees, dk, degree_sequence
-
 
 
 def power_law_distribution(alpha, k_min, k_max, target_avg_k):
@@ -1685,10 +1652,10 @@ if __name__ == '__main__':
     avg_k = 4
     scale = 0.00183
     ## parameters of running the simulaton
-    number = "2000"
+    number = "10000"
     output_folder = 'SimplyConnectedData/'
 
-    seed  = '1'
+    seed = '0'
     Lambda = "0.0"
     beta = "100.0"
     power = "1.0"
@@ -2502,15 +2469,24 @@ if __name__ == '__main__':
 
     visualize_motifs = 0
     if visualize_motifs:
-        motifs = ["star", "ball", "chain", "parents"]
-        N = 8
+        motifs = ["star", "ball", "2-star", "low k-max 2-star"]
+        N = 12
+        Ns = [12, 7, 12, 36]
+        k_min = 2
         fig, axes = pl.subplots(2,2, figsize = (8,6))
         subplot_labels = [a + ')' for a in string.ascii_lowercase]
         for i, motif in enumerate(motifs):
+            N = Ns[i]
             p = axes[int(i > 1), i%2]
-            G = build_motif_graph(motif, N)
-            pos = nx.spring_layout(G)
-            nx.draw(G, pos, node_size = 10, edge_color = 'C7', ax = p)
+            if i < 2:
+                G = build_motif_graph(motif, N)
+            if i == 2:
+                G = just_parents(N, k_min, N)
+            if i == 3:
+                G = just_parents(N, k_min, N//2)#2*N//3)
+            #pos = nx.spring_layout(G)
+            #nx.draw(G, pos, node_size = 10, edge_color = 'C7', ax = p)
+            draw_spring_graph(G, p)
             p.annotate(subplot_labels[i], xy = (0.05, 0.9),
                 xycoords = 'axes fraction', fontsize = fs)
 
@@ -3025,10 +3001,9 @@ if __name__ == '__main__':
         params[4] = running_folder
         params[3] = str(avg_k)
 
-        Ns = [100, 250, 500, 1000, 2500, 5000, 10000]
+        Ns = [100, 250, 500, 1000, 2500, 5000, 10000][:3]
         colours = get_colours_from_cmap(pl.arange(len(Ns)))
-        k_max_fractions = [0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9,
-                                1.0]
+        k_max_fractions = [0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.67, 1.0]
 
         N_avg_degs = []
         N_means = []
@@ -3049,12 +3024,13 @@ if __name__ == '__main__':
             for k_max in k_maxes:
                 print("\n Going for ", k_max, "- N should be", N)
                 not_built = 1
-                max_tries = 5
+                max_tries = 1
                 num_tries = 0
                 while not_built:
                     num_tries += 1
                     try:
-                        G = hacky_partition(N, avg_k, k_min, k_max)
+                        G = just_parents(N, k_min, k_max)
+                        #G = hacky_partition(N, avg_k, k_min, k_max)
                         if type(G) != str:
                             not_built = 0
                         else:
@@ -3081,6 +3057,7 @@ if __name__ == '__main__':
                                     params, param_names, measure_names)
                 means.append(m)
                 errors.append(e)
+
 
             N_avg_degs.append(avg_degs)
             N_rs.append(rs)
@@ -3130,7 +3107,7 @@ if __name__ == '__main__':
         pl.legend()
         pl.ylabel("<k>")
 
-    k_selector = 1
+    k_selector = 0
     if k_selector:
         degrees = [2,3,4,5,6,7,8]
         k_start = degrees[-1]
@@ -3160,5 +3137,212 @@ if __name__ == '__main__':
         pl.plot(x, theory_means, "o")
 
         pl.xscale('log')
+
+    k_max_lifespan = 0
+    if k_max_lifespan:
+        plots_dir = "Plots/"
+        N = 100
+        k_min = 2
+        k_max = 49
+        avg_k = 4
+        
+        pa = 0.0
+        pd = 1.0
+        pr = 0.0
+
+        running_folder = "GeneratedNetworks/"
+        number = "10000"
+        params[0] = number
+        params[4] = running_folder
+        params[3] = str(avg_k)
+
+        Ns = [100, 500, 2000, 10000]
+        colours = get_colours_from_cmap(pl.arange(len(Ns)))
+        k_max_fractions = [0.1, 0.2, 0.3, 0.4, 0.5, 0.67, 1.0]
+        plotting_k_maxes = [0.1, 0.5, 1.0]
+        #k_max_fractions = plotting_k_maxes
+        line_widths = [2, 4, 6]
+        line_styles = [":", "--", "-"]
+        line_index = 0
+        line_colours = ["C0", "C1", "C2"]
+        zorders = [100, 10, 1]
+
+        k_colours = get_colours_from_cmap(
+                                        pl.arange(len(k_max_fractions)))[::-1]
+
+        N_avg_degs = []
+        N_means = []
+        N_errors = []
+        N_rs = []
+        N_k_maxes = []
+        means_fig, means_ax = pl.subplots(1, 1, figsize=(8,6))
+        means_ax.set_ylim(48, 113)
+        denom = 1.4
+        fi_fig, fi_ax = pl.subplots(1, 1, figsize=(4/denom,3/denom))
+        fi_fig.subplots_adjust(right=0.99, top=0.99, left=0.17, bottom=0.18)
+
+        for i, N in enumerate(Ns):
+
+            good_k_maxes = []
+            avg_degs = []
+            means= []
+            errors = []
+            measure_names= ["DeathAge", "HealthyAging", "QALY"]
+            rs = []
+            k_maxes = [int(f*N) for f in k_max_fractions]
+
+            for j, k_max in enumerate(k_maxes):
+                k_max_frac = k_max_fractions[j]
+                print("\n Going for ", k_max, "- N should be", N)
+                not_built = 1
+                max_tries = 5
+                num_tries = 0
+                while not_built:
+                    num_tries += 1
+                    try:
+                        G = just_parents(N, k_min, k_max)
+                        #G = hacky_partition(N, avg_k, k_min, k_max)
+                        if type(G) != str:
+                            not_built = 0
+                        else:
+                            not_built = 1
+                    except ValueError:
+                        not_built = 1
+                        print("Damn")
+                    if num_tries > max_tries:
+                        break
+                if not_built:
+                    continue
+                good_k_maxes.append(k_max)
+ 
+                death_ages, qalys, FIs = run_network(G, running_folder, params,
+                        param_names, 
+                        ["DeathAges", "QALY", "PopulationFI"],
+                        output = "array")[0]
+                mean_fis = pl.nanmean(FIs, axis = 0)
+                counts = pl.sum(~pl.isnan(FIs), axis = 0)
+
+                fi_errors = pl.nanstd(FIs, axis = 0)/pl.sqrt(counts-1)
+                mean_qaly = pl.average(qalys)
+                qaly_error = pl.std(qalys)/pl.sqrt(int(number)-1)
+                mean_td = pl.average(death_ages)
+                td_error = pl.std(death_ages)/pl.sqrt(int(number)-1)
+                print("QALY: {0:.3f} +/- {1:.3f}".format(mean_qaly,
+                                                        qaly_error))
+
+                #mean_fis = mean_fis[counts > 100]
+                #fi_errors = fi_errors[counts > 100]
+                years = pl.arange(len(mean_fis))
+
+                if i == 0 and j == 0:
+                    means_ax.errorbar(k_max_frac, mean_td, yerr = td_error,
+                                    color = colours[i], marker = 'o', ls = "none",
+                                    label = "Death Age", capsize=3)
+                    means_ax.errorbar(k_max_frac, mean_qaly, yerr = qaly_error,
+                                    color = colours[i], marker = '*', ls = "none",
+                                    label = "QALY", capsize=3, markersize=12)
+                if j == 0:
+                    means_ax.errorbar(k_max_frac, mean_td, yerr = td_error,
+                                    color = colours[i], marker = 'o', ls = "none",
+                                    label = "N = {}".format(N), capsize=3)
+                    means_ax.errorbar(k_max_frac, mean_qaly, yerr = qaly_error,
+                                    color = colours[i], marker = '*',
+                                    ls = "none", capsize=3, markersize=12)
+
+                else:
+                    means_ax.errorbar(k_max_frac, mean_td, yerr = td_error,
+                                    color = colours[i], marker = 'o',
+                                    ls = "none", capsize=3)
+                    means_ax.errorbar(k_max_frac, mean_qaly, yerr = qaly_error,
+                                    color = colours[i], marker = '*',
+                                    ls = "none", capsize=3, markersize=12)
+
+                ttd_means, ttd_errors, ttd_years = avg_ttd_fi(FIs, 120)
+                upper = ttd_means + ttd_errors 
+                lower = ttd_means - ttd_errors 
+                #ax[1].fill_between(ttd_years, lower, upper, alpha = 0.5)
+
+                if N == Ns[-1] and k_max_frac in plotting_k_maxes:
+                    print("\n\n k_max;", k_max, "\n\n")
+                    fi_ax.plot(ttd_years, ttd_means,
+                        c = line_colours[line_index],
+                        ls = line_styles[line_index],
+                        lw = line_widths[line_index],
+                        zorder = zorders[line_index])
+                    line_index += 1
+                # plop on the reference data
+                old_fi_data = pl.loadtxt("ReferenceData/OldMortMeanFI.txt")
+                old_mort_data = pl.loadtxt("ReferenceData/OldModelMortalityRates.txt")
+                old_ttd_fi_data = pl.loadtxt("ReferenceData/OldModelTTDFIs.txt")
+
+                old_years = old_ttd_fi_data[:,0]
+                old_mean = old_ttd_fi_data[:,1]
+                old_error = old_ttd_fi_data[:,2]
+                upper = old_mean + old_error
+                lower = old_mean - old_error
+                #ax[1].plot(old_years, old_mean, c = "C3")
+                means_ax.legend()
+                #ax[1].fill_between(old_years, lower, upper, alpha = 0.5, color="C3")
+
+                fi_ax.set_ylabel('FI', labelpad=-0.5)
+                fi_ax.set_xlabel('Years Until Mortality', labelpad=-0.5)
+                fi_ax.set_xticklabels([40, 30, 20, 10, 0])#pl.arange(0, 36,5)[::-1])
+                fi_ax.set_ylim((-0.05, 1.02))
+                
+                means_ax.set_ylabel('Health Performance')
+                means_ax.set_xlabel(r'Maximum Degree ($k_{max}/N$)')
+                #fig.suptitle(plot_title)
+                #pl.savefig(plot_dir + plot_title.replace(" ", "") + ".pdf")
+                means_fig.savefig("Plots/PaperPlots/nStarPerformance.pdf")
+                fi_fig.savefig("Plots/PaperPlots/CompressionCurves.pdf")
+
+    check_sf_clustering = 1
+    # check BA algorithm for clustering as a function of k
+    # verify heirarchical result
+    if check_sf_clustering:
+        # params for generating network
+        temp_folder = "TempData/ScaleFreeTests/"
+        graph_type = "ScaleFree"
+        N = 1000
+        alpha = "2.27"
+        make_directory(temp_folder)
+
+        #sub.call(["make", "backup"])
+        graph_params = ["0", "0.0", "0.0", "0.0", str(N), "2", alpha, "4",
+                    "AND", "Single", temp_folder, graph_type, "0",
+                    "1", "0.0"]
+
+        command = ['./main'] + graph_params 
+        sub.call(command)
+
+        output_files = os.listdir(temp_folder)
+        #print(output_files)
+        degree_file = [f for f in output_files if "Initial" in f][0]
+        edge_list_file = [f for f in output_files if "Edge" in f][0]
+        try:
+            degree_sequence = pl.loadtxt(temp_folder + degree_file)[:,1]
+        except IndexError:
+            print(degree_file)
+        G = nx.read_edgelist(temp_folder + edge_list_file)
+        degree_sequence = pl.asarray([G.degree(i) for i in G.nodes()])
+        degrees = pl.asarray(sorted(list(set(degree_sequence))))
+        local_ccs = pl.asarray([v for k, v in nx.clustering(G).items()])
+        average_local_ccs = []
+        local_ccs_error = []
+        for k in degrees:
+            ccs = local_ccs[degree_sequence == k]
+            average_local_ccs.append(pl.average(ccs))
+            local_ccs_error.append(pl.std(ccs)/(len(ccs)-1))
+        pl.figure(figsize=(8,6))
+        pl.yscale('log')
+        pl.xscale('log')
+        pl.errorbar(degrees, average_local_ccs, yerr = local_ccs_error,
+                    fmt = 'ko')
+        pl.plot(degrees, 0.1*degrees**-1.0, "k:")
+        pl.plot(degree_sequence, local_ccs, "C0o", alpha=0.3)
+
+        for f in os.listdir(temp_folder):
+            os.remove(temp_folder + f)
+            
 
     pl.show()

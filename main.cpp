@@ -81,7 +81,7 @@ int main(int argc, char *argv[]) {
         }
         //std::cout << "\n";
     }
-    OutputInts2d(edgeList, OriginalN, "EdgeList.txt");
+    OutputInts2d(edgeList, OriginalN, "EdgeList");
 
 }
 

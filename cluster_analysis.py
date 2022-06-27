@@ -29,10 +29,12 @@ date = date.strip(' ')
 import matplotlib.style
 import matplotlib as mpl
 import matplotlib.cm as cmx
+from mpl_toolkits.axes_grid1.axes_divider import make_axes_locatable
 from scipy.optimize import curve_fit
 from folder_management import *
 import numpy as np
 
+erms = 14
 mpl.rcParams['lines.markersize'] = 8
 mpl.rcParams['lines.linewidth'] = 1.5
 #mpl.rcParams['lines.markeredgecolor'] = 'k'
@@ -219,15 +221,20 @@ def generate_entropy_plots(data_dir, reference_data_dir, plots_dir, plot_title,
         measure_fig.subplots_adjust(wspace=0.01)
 
         if i == 0: 
-            if int(N) > 500:
+            if int(N) > 500000:
                 graph_fig, graph_ax = pl.subplots(2, len(plotting_indices),
-                                figsize = (3*len(plotting_indices), 6))
-            else:
-                graph_fig, graph_ax = pl.subplots(3, len(plotting_indices),
-                    gridspec_kw={"height_ratios": [1,1, 1],
+                    gridspec_kw={"height_ratios": [1, 8/6],
                                 "width_ratios": 
                                     [1 for i in range(len(plotting_indices))]},
-                    figsize = (3*len(plotting_indices), 6))
+                    figsize = (8, 6))
+                pl.subplots_adjust(wspace=0.2, hspace = 0.2)
+
+            else:
+                graph_fig, graph_ax = pl.subplots(3, len(plotting_indices),
+                    gridspec_kw={"height_ratios": [1,1.2, 1],
+                                "width_ratios": 
+                                    [1 for i in range(len(plotting_indices))]},
+                    figsize = (2.7*len(plotting_indices), 6))
                 graph_fig.subplots_adjust(hspace=0.4)
             #pl.subplots_adjust(hspace=0)
 
@@ -242,7 +249,8 @@ def generate_entropy_plots(data_dir, reference_data_dir, plots_dir, plot_title,
                 path = paths[l]
                 
                 if i == 0:
-                    compare_graphs(l, plotting_indices, path, int(N), graph_ax,
+                    compare_graphs(l, plotting_indices, path, int(N),
+                                        graph_fig,graph_ax,
                                         entropies[l], scale_free_data,
                                         plots_dir)
                 marker_size = 15
@@ -407,10 +415,10 @@ def get_n_by_m_subplots(n, m, size = (12,8)):
             sequential_axes.append(p)
     return fig, sequential_axes
 
-def compare_graphs(index, indices, path, N, axes, entropy, scale_free_data,
+def compare_graphs(index, indices, path, N, fig, axes, entropy, scale_free_data,
                     plot_folder):
     """
-    Show the graphs (spring layout) if N < 1000, and show Pkk
+    Show the graphs (spring layout) if N < 500, and show Pkk
     Will be a set of graphs selected from the vs entropy plot
     """
     print(index, indices, path, N)
@@ -442,7 +450,7 @@ def compare_graphs(index, indices, path, N, axes, entropy, scale_free_data,
     if len(pl.shape(sf_degrees)) != 1:
         sf_degrees = sf_degrees[-1,:]
         sf_dk = sf_dk[-1,:]
-     
+    full_degrees = pl.copy(degrees) 
     alpha_data = pl.loadtxt(path + "BestAlphas.txt")
     sf_alpha_data = pl.loadtxt(sf_path + "BestAlphas.txt")
     show_alpha = 0
@@ -476,35 +484,96 @@ def compare_graphs(index, indices, path, N, axes, entropy, scale_free_data,
         axes[0,i].plot(degrees, direct_power_law, 'C0',
             label = "Variational\n" + r" $\alpha = {:.3f}$".format(sf_alpha))
     """
-    axes[0,i].legend(frameon=False)
-    axes[0,i].plot(degrees, dk, 'C0o')
-    axes[0,i].plot(sf_degrees, sf_dk, 'C1*')#, alpha = 0.8)
+    axes[0,i].plot(degrees, dk, 'C0o', label = "Lifespan Optimized")
+    axes[0,i].plot(sf_degrees, sf_dk, 'C1^', label = "QALY Optimized")
+    ref_k = pl.array([10, 100, 1000]).astype(float)
+    ref_line = ref_k**(-3)*10e5
+    axes[0,1].plot(ref_k*0.5, ref_line, "k:")
+    axes[0,1].annotate(r"$\sim \mathrm{k}^{-3}$", xy = (2e1, 1.5e1))
     axes[0,i].set_xscale('log')
     axes[0,i].set_yscale('log')
     axes[0,i].set_xlabel('k', labelpad = -4.0)
-    axes[0,i].set_title('Entropy: {:.2f}'.format(entropy))
+    #axes[0,i].set_title('Entropy: {:.2f}'.format(entropy))
     axes[0,i].set_ylim(0.5, N*1.5)
-    axes[1,i].set_xlabel("k", labelpad=-4)
-    axes[1,i].set_ylabel("k'", labelpad=-4)
+    axes[1,i].set_xlabel("k", labelpad=-8)
+    cluster_ref_line = ref_k**(-1)*1
     #axes[1,i].set(adjustable = "box")
     #axes[0,i].set(adjustable = "box")
 
     if i == 0:
         axes[0,i].set_ylabel('Count')
+        axes[1,i].set_ylabel("k'", labelpad=-4)
     
+    axes[0,0].legend(bbox_to_anchor = (0, 0.0), loc='lower left', fontsize=8)
     pkk = pl.loadtxt(path + "BestPkk.csv", delimiter = ",")
-    if N < 500:
-        draw_spring_graph(G, axes[2,i])
+    axes[0,0].annotate("A)", xy = (0.9, 0.88),
+                                xycoords="axes fraction", fontsize=12)
+    axes[0,1].annotate("B)", xy = (0.9, 0.88),
+                                xycoords="axes fraction", fontsize=12)
+    axes[1,0].annotate("C)", xy = (0.85, 0.9),
+                                xycoords="axes fraction", fontsize=12)
+    axes[1,1].annotate("D)", xy = (0.85, 0.9),
+                                xycoords="axes fraction", fontsize=12)
+
+    try:
+        #draw_spring_graph(G, axes[2,i])
+        axes[2,0].annotate("E)", xy = (0.9, 0.88),
+                                    xycoords="axes fraction", fontsize=12)
+        axes[2,1].annotate("F)", xy = (0.9, 0.88),
+                                    xycoords="axes fraction", fontsize=12)
+
+
+        fmts = ["C0o", "C1^"]
+        for g_id, data_dir in enumerate([path, sf_path]):
+            G = nx.read_edgelist(data_dir + "BestNetwork.csv",
+                                    delimiter = ",")
+
+            # Doing the clustering as a function of degree in stead
+            degree_sequence = pl.asarray([G.degree(i) for i in G.nodes()])
+            degrees = pl.asarray(sorted(list(set(degree_sequence))))
+            local_ccs = pl.asarray([v for k, v in nx.clustering(G).items()])
+            average_local_ccs = []
+            local_ccs_error = []
+            for k in degrees:
+                ccs = local_ccs[degree_sequence == k]
+                average_local_ccs.append(pl.average(ccs))
+                local_ccs_error.append(pl.std(ccs)/(len(ccs)-1))
+            #axes[2,i].errorbar(degrees, average_local_ccs, yerr = local_ccs_error,
+            #        fmt = fmts[g_id])
+            axes[2,i].plot(degree_sequence, local_ccs, fmts[g_id])
+        axes[2,i].set_xscale('log')
+        axes[2,1].plot(ref_k, cluster_ref_line, "k:")
+        axes[2,1].annotate(r"$\sim \mathrm{k}^{-1}$", xy = (3e1, 2e-3))
+        axes[2,i].set_yscale('log')
+        axes[2,0].set_ylabel('Clustering Coefficient')
+        axes[2,i].set_xlabel('k', labelpad=-4)
+        axes[2,i].tick_params(axis="y", which="major", pad = 0)
+        axes[2,i].set_ylim(1e-3, 1.8)
+        axes[2,i].set_xlim(1.5, int(N)*1.3)
+    except IndexError:
+        print("Not doing the third row for this plot")
+
+
+
+
+
 
     # catch test-runs that never get any data...
     try:
-        axes[1, i].imshow(pkk, origin = 'lower')
+        #pkk = pkk[dk > 0, dk > 0]
+        im = axes[1,i].imshow(pkk, origin = 'lower', cmap = "Greys")
+        cbar = fig.colorbar(im,ax = axes[1,i], fraction=0.046, pad=0.04)
+        cbar.ax.tick_params(labelsize=10)
+        #ax_divider = make_axes_locatable(axes[1,0])
+        #cbar_ax = ax_divider.append_axes("right", size="5%", pad="2%")
+        #cbar = fig.colorbar(im, ax = cbar_ax)
     except TypeError:
         print("No Joint matrix for this data...")
     if 1:
+        degrees = pl.copy(full_degrees)
         axes[1, i].set_xticks(pl.arange(len(degrees))[::show_every])
         axes[1, i].set_xticklabels(degrees[::show_every].astype(int),
-                                    rotation = -60, fontsize=8)
+                                    rotation = -90, fontsize=8)
     else:
         if i == 3:
             print("Killing the ticks")
@@ -719,7 +788,8 @@ def versus_entropy(data_dir, plots_dir, plot_title, save_plots,
         if i == 0: 
             if int(N) > 500:
                 graph_fig, graph_ax = pl.subplots(2, len(plotting_indices),
-                                                    figsize = (12, 6))
+                                    subplot_kw={"box_aspect": 1},
+                                    constrained_layout=True, figsize = (8, 10))
             else:
                 graph_fig, graph_ax = pl.subplots(3, len(plotting_indices),
                                     subplot_kw={"box_aspect": 1},
@@ -732,7 +802,8 @@ def versus_entropy(data_dir, plots_dir, plot_title, save_plots,
                 path = paths[l]
                 
                 if i == 0:
-                    compare_graphs(l, plotting_indices, path, int(N), graph_ax,
+                    compare_graphs(l, plotting_indices, path, int(N), 
+                                        graph_fig, graph_ax,
                                         entropies[l], plots_dir)
                 marker = "*"
                 marker_size = 15
@@ -1593,10 +1664,10 @@ def simple_entropy_plots(data_dirs, labels, plots_dir, save_plots, N,
         if optimization_measure == "DeathAge":
             merit_indices.append(0)
         elif optimization_measure == "QALY":
-            merit_indices.append(1)
-        else:
             merit_indices.append(2)
-    print(data_dirs)
+        else:
+            merit_indices.append(1)
+    print(data_dirs, optimization_measures, merit_indices)
     entropy_figs = [pl.subplots(1,1, figsize=(8,6)) for i in range(3)]
     figs = [f[0] for f in entropy_figs]
     axes = [f[1] for f in entropy_figs]
@@ -1604,27 +1675,28 @@ def simple_entropy_plots(data_dirs, labels, plots_dir, save_plots, N,
     comp_fig, comp_ax = pl.subplots(1, 1, figsize=(4/denom,3/denom))
     comp_fig.subplots_adjust(right=0.99, top=0.99, left=0.13, bottom=0.15)
     if add_alpha:
+        denom = 1.5
         alpha_fig, alpha_ax = pl.subplots(1, 1, figsize=(4/denom,3/denom)) 
-        alpha_fig.subplots_adjust(right=0.99, top=0.99, left=0.15, bottom=0.15)
+        alpha_fig.subplots_adjust(right=0.99, top=0.99, left=0.21, bottom=0.19)
     if add_metrics:
-        metric_fig, metric_ax = pl.subplots(2, 2, figsize=(8,6))
-        c_bar_ax = metric_fig.add_axes([0.92, 0.11, 0.03, 0.77])
+        metric_fig, metric_ax = pl.subplots(1, 4, figsize=(12,3))
+        c_bar_ax = metric_fig.add_axes([0.91, 0.15, 0.02, 0.73])
         #metric_fig.set(tight_layout=True)
-        metric_fig.subplots_adjust(right = 0.85, wspace = 0.3)
+        metric_fig.subplots_adjust(wspace = 0.33, bottom=0.15, left=0.08)
 
 
-    measure_names = ["Death Age", "Healthy Aging", "QALY"]
+    measure_names = ["Lifespan", "Healthy Aging", "QALY"]
     colours = ["C{}".format(i) for i in range(len(data_dirs))]
     markers = ["o", "^", "*", "d"]
     print("Number of Data:", len(data_dirs))
     print("Markers:", len(markers), ", Colours:", len(colours))
     combined_colour_metrics = []
 
-    sf_entropy, sf_measures, sf_errors = measure_spencers_graph(N, temp_folder,
-                                                params, param_names)
-    er_entropy, er_measures, er_errors = measure_spencers_graph(N, temp_folder,
-                                                params, param_names,
-                                                graph_type="Random")
+    sf_entropy, sf_measures, sf_errors, sf_metrics = measure_spencers_graph(
+                                    N, temp_folder, params, param_names)
+    er_entropy, er_measures, er_errors, er_metrics = measure_spencers_graph(
+                                    N, temp_folder,params, param_names,
+                                    graph_type="Random")
     print(data_dirs)
     drew_high = 0
     drew_low = 0
@@ -1679,7 +1751,9 @@ def simple_entropy_plots(data_dirs, labels, plots_dir, save_plots, N,
         best_slopes = pl.asarray(best_slopes)
         best_slopes[best_entropies < entropy_at_peak] = 0.0
 
-        #pl.plot(best_entropies, best_merits, "C2", lw = 2,
+
+        # DRAWING THE CONVEX HULL PLOT  
+        #axes[merit_index].plot(best_entropies, best_merits, "C2", lw = 2,
         #                            label = "Interpolated Max")
 
 
@@ -1693,6 +1767,7 @@ def simple_entropy_plots(data_dirs, labels, plots_dir, save_plots, N,
             distances[j] = (best_merit - merit)/best_merit
 
         failures = (distances > tolerance)
+        print("Failure Rate:", pl.average(failures))
 
         # plot alphas if you want
         if add_alpha:
@@ -1739,23 +1814,28 @@ def simple_entropy_plots(data_dirs, labels, plots_dir, save_plots, N,
                 cc = nx.algorithms.average_clustering(G)
                 ccs.append(cc)
 
-            metric_ax[0,1].scatter(entropies[~failures], ccs, c = metric_colours,
-                        marker =  markers[i], label = labels[i],
-                        ec = "k", lw=1)
-
             # degree assortativity coefficient
             rs = pl.asarray(rs)[~failures]
-            metric_ax[0,0].scatter(entropies[~failures], rs, c = metric_colours,
+            marker_size = 35
+            metric_ax[0].scatter(entropies[~failures], rs, c = metric_colours,
                         marker =  markers[i], label = labels[i],
-                        ec="k", lw=1)
-            metric_ax[1,0].scatter(entropies[~failures], k_maxes[~failures],
+                        ec="k", lw=1,
+                        s=marker_size)
+            metric_ax[1].scatter(entropies[~failures], k_maxes[~failures],
                         c = metric_colours,
-                        marker =  markers[i], label = labels[i],
-                        ec="k", lw=1)
-            metric_ax[1,1].scatter(entropies[~failures], moments[~failures],
+                        marker =  markers[i],# label = labels[i],
+                        ec="k", lw=1,
+                        s=marker_size)
+            metric_ax[2].scatter(entropies[~failures], moments[~failures],
                         c = metric_colours,
-                        marker =  markers[i], label = labels[i],
-                        ec="k", lw=1)
+                        marker =  markers[i],# label = labels[i],
+                        ec="k", lw=1,
+                        s=marker_size)
+            metric_ax[3].scatter(entropies[~failures], ccs, c = metric_colours,
+                        marker =  markers[i],# label = labels[i],
+                        ec = "k", lw=1,
+                        s=marker_size)
+
 
 
 
@@ -1764,6 +1844,14 @@ def simple_entropy_plots(data_dirs, labels, plots_dir, save_plots, N,
         for j, measure_name in enumerate(measure_names):
             measure = pl.asarray(measures[j])
             error = pl.asarray(errors[j])
+            if j == 0:
+                # limits for scale free plots
+                #axes[j].set_ylim(81, 114)
+                #axes[j].set_xlim(0.5, 5.5)
+                # limits for qaly vs td
+                axes[j].set_ylim(79, 114)
+                axes[j].set_xlim(0.1, 4.6)
+
             axes[j].errorbar(entropies[~failures], measure[~failures],
                         yerr = error[~failures], marker = markers[i],
                         color = colours[i], ls = "none",
@@ -1784,13 +1872,16 @@ def simple_entropy_plots(data_dirs, labels, plots_dir, save_plots, N,
     if add_scale_free:
         comp_ax.errorbar(sf_measures[0], sf_measures[2],
                     yerr = sf_errors[2], xerr = sf_errors[0],
-                    fmt = 'ks', label = "Original GNM", capsize=3)
+                    fmt = 'C6s', label = "Original GNM", capsize=3,
+                    ms = erms - 2)
         comp_ax.errorbar(er_measures[0], er_measures[2],
                     yerr = er_errors[2], xerr = er_errors[0],
-                    fmt = 'k*', label = "Random Graph", capsize=3)
+                    fmt = 'C4*', label = "Random Graph", capsize=3,
+                    ms = erms)
 
         if add_alpha:
-            alpha_ax.plot(sf_entropy, 2.35, "ks", label = "Original GNM")
+            alpha_ax.plot(sf_entropy, 2.35, "C6s", label = "Original GNM",
+                            ms = erms-2)
 
     if add_alpha:
         alpha_ax.set_ylabel('Scale Free Exponent', labelpad=-0.15)
@@ -1807,20 +1898,44 @@ def simple_entropy_plots(data_dirs, labels, plots_dir, save_plots, N,
                                         norm=norm,
                                         orientation='vertical')
         #metric_fig.tight_layout(w_pad=-10)
-        c_bar_ax.yaxis.set_ticks_position('left')
-        c_bar_ax.yaxis.set_label_position('left')
-        c_bar_ax.set_ylabel('Average Lifespan', labelpad=-1)
+        c_bar_ax.yaxis.set_ticks_position('right')
+        c_bar_ax.yaxis.set_label_position('right')
+        c_bar_ax.set_ylabel('Average Lifespan', labelpad=2)
+        #cbar = metric_fig.colorbar(
  
-        metric_ax[0,0].set_ylabel('Degree Assortativity Coefficient')
-        metric_ax[0,0].set_xlabel('Entropy')
-        metric_ax[0,0].legend()
-        metric_ax[0,1].set_ylabel('Average Clustering Coefficient')
-        metric_ax[0,1].set_xlabel('Entropy')
-        metric_ax[1,0].set_xlabel("Entropy")
-        metric_ax[1,0].set_ylabel("Maximum Degree (Units of N)")
-        metric_ax[1,1].set_xlabel("Entropy")
-        metric_ax[1,1].set_ylabel(r"Scaled Second Moment " + 
-                r"$\frac{\langle k^{2} \rangle}{N}$")
+        metric_ax[0].set_ylabel('Degree Assortativity Coefficient', labelpad=0)
+        metric_ax[0].set_xlabel('Entropy')
+        metric_ax[3].set_ylabel('Average Clustering Coefficient', labelpad=0)
+        metric_ax[1].set_xlabel('Entropy')
+        metric_ax[2].set_xlabel("Entropy")
+        metric_ax[1].set_ylabel("Maximum Degree (Units of N)", labelpad=0)
+        metric_ax[3].set_xlabel("Entropy")
+        metric_ax[2].set_ylabel(r"Scaled Second Moment " + 
+                r"$\frac{\langle k^{2} \rangle}{N}$", labelpad=0)
+        reordered_ids = [0,2,3,1]
+        letters = ['A', 'B', 'C', 'D']
+        # Chaos: I've reordered the Ids like a gd fool
+        for m_id in reordered_ids: #m_id in range(len(sf_metrics)):
+            metric_p = metric_ax[m_id]#int(m_id > 1), int(m_id % 2)]
+            metric_p.annotate(letters[m_id] + ")", xy = (0.9, 0.92),
+                                xycoords="axes fraction", fontsize=12)
+            if m_id == 0:
+                metric_p.plot(sf_entropy, sf_metrics[i], 'C6s',
+                                label = "Original GNM", ms = erms - 2)
+                metric_p.plot(er_entropy, er_metrics[i], 'C4*',
+                                ms = erms, label = "Random Graph")
+            else:
+                metric_p.plot(sf_entropy, sf_metrics[i], 'C6s',
+                                ms = erms - 2)
+                metric_p.plot(er_entropy, er_metrics[i], 'C4*',
+                                ms = erms)
+
+        #    if m_id == 0:
+        metric_fig.legend(loc="upper center", ncol=4)
+        #                        mode="expand")
+        #metric_ax[0,0].set_ylim(-1.08, 0.3)
+        #metric_ax[0,0].set_xlim(0.4, 5.57)
+        
 
         #alpha_ax.set_yscale('log')
         if save_plots:
@@ -1842,12 +1957,19 @@ def simple_entropy_plots(data_dirs, labels, plots_dir, save_plots, N,
         p.set_ylabel(measure_name)
         if add_scale_free:
             p.errorbar(sf_entropy, sf_measures[j], yerr = sf_errors[j],
-                        fmt = 'ks', label = "Original GNM", capsize=3)
+                        fmt = 'C6s', label = "Original GNM", capsize=3,
+                        ms = erms-2)
             p.errorbar(er_entropy, er_measures[j], yerr = er_errors[j],
-                        fmt = 'k*', label = "Random Graph", capsize=3)
+                        fmt = 'C4*', label = "Random Graph", capsize=3,
+                        ms = erms)
 
-
-        p.legend()#loc='lower left')
+        
+        
+        ### LEGEND FOR TD VS ENTROPY
+        ### for the td qaly plot
+        p.legend(loc='upper right')
+        ### for the scale free plot
+        #p.legend(loc='lower left')
 
         if save_plots:
             make_directory(plots_dir)
@@ -1873,8 +1995,20 @@ def measure_spencers_graph(N, temp_folder, params, param_names,
     #print(output_files)
     degree_file = [f for f in output_files if "Initial" in f][0]
     edge_list_file = [f for f in output_files if "Edge" in f][0]
-    degree_sequence = pl.loadtxt(temp_folder + degree_file)[:,1]
+    try:
+        degree_sequence = pl.loadtxt(temp_folder + degree_file)[:,1]
+    except IndexError:
+        print(degree_file)
     G = nx.read_edgelist(temp_folder + edge_list_file)
+    r = nx.degree_assortativity_coefficient(G)
+    cc = nx.average_clustering(G)
+    degrees = pl.asarray(list(set([G.degree(n) for n in G.nodes()])))
+    pk = pl.asarray(nx.degree_histogram(G))
+    pk = pk[pk != 0]
+    scaled_second_moment = pl.dot(pk, degrees**2)/int(N)
+    metrics = [r, cc, pl.amax(degrees), scaled_second_moment]
+    
+
 
     pkk = pkk_from_G(G)
     entropy = calculate_entropy(pkk)
@@ -1890,7 +2024,7 @@ def measure_spencers_graph(N, temp_folder, params, param_names,
         os.remove(temp_folder + f)
 
 
-    return entropy, health_means, health_errors
+    return entropy, health_means, health_errors, metrics
     
 
 if __name__ == '__main__':
@@ -1910,8 +2044,8 @@ if __name__ == '__main__':
     N = "128"
     meta_data = "betterkMax2/NBins{}".format(n_bins) 
 
-    k_mins = ["1", "2"]
-    k_maxes = ["0.5", "1.0"][:1]
+    k_mins = ["1", "2"][:1]
+    k_maxes = ["0.5", "1.0"][1:]
     data_dirs = []
     labels = []
     k_min_k_max = 0
@@ -1930,20 +2064,21 @@ if __name__ == '__main__':
     qaly_vs_td = 0
     if qaly_vs_td:
         add_alpha = False
-        brief_description = "QALYvsDeathAgekMin1/"
-        meta_data = "fixedkMin1nBins15"#"betterkMin2nBins15"
+        brief_description = "BigFinalQALYvsDeathAgekMin2/"
+        meta_data = "FinalN1024"#"betterkMin2nBins15"
         add_metrics=True
-        N = "128"
-        k_min = "1"
+        N = "1024"
+        k_min = "2"
         tolerance = 0.05
         k_max = "1.0"
         n_bins = "15"
         optimization_measures = ["DeathAge", "QALY"]
-        for merit in optimization_measures:
+        merit_labels = ["Lifespan", "QALY"]
+        for i, merit in enumerate(optimization_measures):
             details = "{0}/NBins{6}/{1}/kMin{4}/kMax{5}/N{2}/{3}/".format(
                     meta_data, method, N, merit, k_min, k_max, n_bins)
             data_dir = base_data_dir + details
-            label = merit + " Optimized"
+            label = merit_labels[i] + " Optimized"
             labels.append(label)
             data_dirs.append(data_dir)
     
@@ -1978,12 +2113,14 @@ if __name__ == '__main__':
             run_hours, evo_condition, initial_distribution, Lambda,
             beta, power]
 
-    use_scale_free_data = 0
+    use_scale_free_data = 1
     if use_scale_free_data:
         add_metrics = 1
-        Ns = ["128", "512"][:1]
+        Ns = ["128", "512", "1024"][2:]
         merits = ["DeathAge", "QALY", "HealthyAging"][:1]
-        meta_data = "logScaleFree"
+        optimization_measures = ["DeathAge", "DeathAge"]
+        tolerance = 0.05
+        meta_data = "ScaleFreeN1024"
         method = "Variational"
         for N in Ns:
             for merit in merits:
@@ -1991,11 +2128,12 @@ if __name__ == '__main__':
                                                     method, N, merit, k_min, k_max)
                 data_dir = base_data_dir + details
                 data_dirs.append(data_dir)
-                label = "Variational" #"N{0}Merit{1}".format(N, merit)
+                label = "Scale-Free" #"N{0}Merit{1}".format(N, merit)
                 labels.append(label)
             brief_description = "ScaleFree/"
-        meta_data = "betterkMin2nBins15"
-        N = "128"
+        #meta_data = ""
+        meta_data = "FinalN1024"#"betterkMin2nBins15"
+        N = "1024"
         k_min = "2"
         k_max = "1.0"
         n_bins = "15"
@@ -2011,21 +2149,21 @@ if __name__ == '__main__':
 
 
 
-    use_test_data = 1
+    use_test_data = 0
     if use_test_data:
-        N = 256
+        N = 128
         data_dirs = [
             "Data/TopStart/NBins15/NonParametric/kMin2/kMax1.0/N256/DeathAge/",
-            "Data/TopStart/NBins15/NonParametric/kMin2/kMax1.0/N256/QALY/"]
-        optimization_measures = ["DeathAge", "QALY"]
+            "Data/MixedAlphaChange/Variational/N128/DeathAge/"]
+        optimization_measures = ["DeathAge", "DeathAge"]
         tolerance = 0.05
-        labels = ["DeathAge", "QALY"]
-        brief_description = "TopStart/"
+        labels = ["NonParametric", "MixedAlphaChange"]
+        brief_description = "MixedAlpha/"
         add_metrics = True
 
 
     plots_dir = "Plots/SimplePlots/" + brief_description
-    do_simple_plots = 0
+    do_simple_plots = 1
     if do_simple_plots:
         make_directory(plots_dir)
         simple_entropy_plots(data_dirs, labels, plots_dir, 
@@ -2035,15 +2173,15 @@ if __name__ == '__main__':
                             add_alpha=add_alpha,
                             tolerance = tolerance)
 
-    do_full_plots = 1
+    do_full_plots = 0
     if do_full_plots:
         bins_dir = data_dirs[1]
         reference_data_dir = data_dirs[0]
-        plots_dir = "Plots/PaperPlots/NetworkGraphs/kMin1/"
+        plots_dir = "Plots/PaperPlots/NetworkGraphs/RemadeQALYvsTd/"
         make_directory(plots_dir)
         plot_title = ""
         colour_metric = "Moment"
-        plotting_targets = [0.8, 3.75]
+        plotting_targets = [0.0, 4.0]#, 10]
         generate_entropy_plots(bins_dir, reference_data_dir, plots_dir,
                         plot_title, save_plots, N,
                         colour_metric = colour_metric,
